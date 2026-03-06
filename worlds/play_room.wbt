@@ -1,0 +1,100 @@
+#VRML_SIM R2023b utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "../protos/P3Bot.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/tables/protos/Desk.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/kuka/youbot/protos/KukaBox.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/apartment_structure/protos/Wall.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/apartment_structure/protos/Door.proto"
+
+WorldInfo {
+  info [
+    "Simulation of the ROBOLAB P3Bot robot."
+  ]
+  title "ROBOLAB P3Bot"
+  basicTimeStep 4
+  contactProperties [
+    ContactProperties {
+      material1 "InteriorWheelMat"
+      coulombFriction [
+        0, 2, 0
+      ]
+      frictionRotation -0.785398 0
+      bounce 0
+      forceDependentSlip [
+        10, 0
+      ]
+    }
+    ContactProperties {
+      material1 "ExteriorWheelMat"
+      coulombFriction [
+        0, 2, 0
+      ]
+      frictionRotation 0.785398 0
+      bounce 0
+      forceDependentSlip [
+        10, 0
+      ]
+    }
+    ContactProperties {
+      material1 "finger_material"
+      coulombFriction [
+        0.8
+      ]
+      bounce 0
+    }
+  ]
+}
+Viewpoint {
+  orientation -0.2743468893536206 -0.06784321910864408 0.9592346334046581 3.880728952252244
+  position 5.14906894591396 5.175570242157864 5.442811613883238
+}
+Door {
+  translation 0.01 -1.61999 0
+  rotation 0 0 1 1.5708
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  floorSize 6 6
+  wallHeight 2.4
+}
+Desk {
+  translation 0 1 0
+  rotation 0 0 1 1.5708
+  name "Table1"
+}
+Desk {
+  translation -2.5 1.03 0
+  rotation 0 0 1 0
+  name "Table4"
+}
+Desk {
+  translation 2.5 -2.25 0
+  rotation 0 0 1 0
+  name "Table3"
+}
+Desk {
+  translation -2.5 -2.25 0
+  name "Table2"
+}
+Wall {
+  translation -1.75 -1.50 0
+  size 2.5 0.1 2.4
+}
+Wall {
+  translation 1.75 -1.50 0
+  name "wall(1)"
+  size 2.5 0.1 2.4
+}
+P3Bot {
+  translation 0 0 0
+  rotation 0 0 1 1.5708
+}
+KukaBox {
+  translation 0 0.75 0.75
+}
