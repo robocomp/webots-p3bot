@@ -11,8 +11,8 @@ PROTO KinovaGen3 [
   field  SFString    name            "KinovaGen3"  # Is `Robot.name`.
   field  SFBool      invertWrist     FALSE
   field  SFString    prefix          "Right_"
-  field  SFFloat     armsMinPosition -0.032
-  field  SFFloat     armsMaxPosition 0.01
+  field  SFFloat     armsMinPosition 0
+  field  SFFloat     armsMaxPosition 0.0425
 ]
 {
   Solid {
@@ -232,63 +232,66 @@ PROTO KinovaGen3 [
                                               translation 0.000000 -0.105930 -0.000175
                                               rotation -1.000000 -0.000000 0.000000 1.570800
                                               children [
-                                                Solid {
-                                                        translation 0 0 -0.09
+                                                # Agrupamos los Sliders en un Group para no romper la física del Bracelet_Link
+                                                Group {
+                                                  children [
+                                                    # --- DEDO DERECHO ---
+                                                    SliderJoint {
+                                                      jointParameters JointParameters {
+                                                        position 0
+                                                        axis 1 0 0
+                                                        minStop IS armsMinPosition
+                                                        maxStop IS armsMaxPosition
+                                                      }
+                                                      device [
+                                                        PositionSensor { name %<= '"' + fields.prefix.value + "Hand_PositionSensor_Right" + '"'; >% }
+                                                        LinearMotor {
+                                                          name %<= '"' + fields.prefix.value + "Hand_LinearMotor_Right" + '"'; >%
+                                                          maxForce 50
+                                                          maxVelocity 0.1
+                                                        }
+                                                      ]
+                                                      endPoint Solid {
+                                                        translation 0.005 0 -0.12 # Ajustado para que sobresalga de la muñeca
                                                         children [
-                                                          SliderJoint {
-                                                            jointParameters JointParameters {
-                                                              position 0.01
-                                                              axis 1 0 0
-                                                              minStop IS armsMinPosition
-                                                              maxStop IS armsMaxPosition
-                                                            }
-                                                            device [
-                                                              PositionSensor {
-                                                              }
-                                                              LinearMotor {
-                                                                name %<= '"' + fields.prefix.value + "Hand_LinearMotor_Right" + '"'; >%
-                                                              }
-                                                            ]
-                                                            endPoint Solid {
-                                                              translation 0.05 0 -0.0625
-                                                              children [
-                                                                DEF Finger Shape {
-                                                                  appearance USE base_link_material
-                                                                  geometry DEF basic_finger Box {
-                                                                    size 0.01 0.02 0.035
-                                                                  }
-                                                                }
-                                                              ]
-                                                              name %<= '"' + fields.prefix.value + "Hand_Finger_Right" + '"'; >%
-                                                              boundingObject USE basic_finger
-                                                            }
-                                                          }
-                                                          SliderJoint {
-                                                            jointParameters JointParameters {
-                                                              position 0.01
-                                                              axis -1 0 0
-                                                              minStop IS armsMinPosition
-                                                              maxStop IS armsMaxPosition
-                                                            }
-                                                            device [
-                                                              PositionSensor {
-                                                              }
-                                                              LinearMotor {
-                                                                name %<= '"' + fields.prefix.value + "Hand_LinearMotor_Left" + '"'; >%
-                                                              }
-                                                            ]
-                                                            endPoint Solid {
-                                                              translation -0.05 0 -0.0625
-                                                              children [
-                                                                USE Finger
-                                                              ]
-                                                              name %<= '"' + fields.prefix.value + "Hand_Finger_Left" + '"'; >%
-                                                              boundingObject USE basic_finger
-                                                            }
+                                                          DEF Finger_Shape Shape {
+                                                            appearance USE base_link_material
+                                                            geometry DEF basic_finger Box { size 0.01 0.02 0.05 } # Dedo un poco más largo
                                                           }
                                                         ]
-                                                        name "fingers_holder"
+                                                        name %<= '"' + fields.prefix.value + "Hand_Finger_Right" + '"'; >%
+                                                        contactMaterial "finger_material"
+                                                        boundingObject USE basic_finger
+                                                        physics Physics { mass 0.1 }
                                                       }
+                                                    }
+                                                    # --- DEDO IZQUIERDO ---
+                                                    SliderJoint {
+                                                      jointParameters JointParameters {
+                                                        position 0
+                                                        axis -1 0 0
+                                                        minStop IS armsMinPosition
+                                                        maxStop IS armsMaxPosition
+                                                      }
+                                                      device [
+                                                        PositionSensor { name %<= '"' + fields.prefix.value + "Hand_PositionSensor_Left" + '"'; >% }
+                                                        LinearMotor {
+                                                          name %<= '"' + fields.prefix.value + "Hand_LinearMotor_Left" + '"'; >%
+                                                          maxForce 50
+                                                          maxVelocity 0.1
+                                                        }
+                                                      ]
+                                                      endPoint Solid {
+                                                        translation -0.005 0 -0.12
+                                                        children [ USE Finger_Shape ]
+                                                        name %<= '"' + fields.prefix.value + "Hand_Finger_Left" + '"'; >%
+                                                        contactMaterial "finger_material"
+                                                        boundingObject USE basic_finger
+                                                        physics Physics { mass 0.1 }
+                                                      }
+                                                    }
+                                                  ]
+                                                }
                                                 Shape {
                                                   appearance DEF Bracelet_Link_material PBRAppearance {
                                                     baseColor 0.752940 0.752940 0.752940
