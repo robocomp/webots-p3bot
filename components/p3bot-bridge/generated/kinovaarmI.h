@@ -1,5 +1,5 @@
 /*
- *    Copyright (C) 2025 by YOUR NAME HERE
+ *    Copyright (C) 2026 by YOUR NAME HERE
  *
  *    This file is part of RoboComp
  *
@@ -41,6 +41,7 @@ public:
 	void moveJointsWithSpeed(RoboCompKinovaArm::TJointSpeeds speeds, const Ice::Current&);
 	void openGripper(const Ice::Current&);
 	void setCenterOfTool(RoboCompKinovaArm::TPose pose, RoboCompKinovaArm::ArmJoints referencedTo, const Ice::Current&);
+	bool setGripperPos(float pos, const Ice::Current&);
 
 private:
 
@@ -49,14 +50,15 @@ private:
 
 	// Array handlers for each method
 	std::array<std::function<bool(void)>, 2> closeGripperHandlers;
-	std::array<std::function<RoboCompKinovaArm::TPose(RoboCompKinovaArm::ArmJoints)>, 2> getCenterOfToolHandlers;
+	std::array<std::function<RoboCompKinovaArm::TPose(RoboCompKinovaArm::ArmJoints&)>, 2> getCenterOfToolHandlers;
 	std::array<std::function<RoboCompKinovaArm::TGripper(void)>, 2> getGripperStateHandlers;
 	std::array<std::function<RoboCompKinovaArm::TJoints(void)>, 2> getJointsStateHandlers;
 	std::array<std::function<RoboCompKinovaArm::TToolInfo(void)>, 2> getToolInfoHandlers;
-	std::array<std::function<void(RoboCompKinovaArm::TJointAngles)>, 2> moveJointsWithAngleHandlers;
-	std::array<std::function<void(RoboCompKinovaArm::TJointSpeeds)>, 2> moveJointsWithSpeedHandlers;
+	std::array<std::function<void(RoboCompKinovaArm::TJointAngles&)>, 2> moveJointsWithAngleHandlers;
+	std::array<std::function<void(RoboCompKinovaArm::TJointSpeeds&)>, 2> moveJointsWithSpeedHandlers;
 	std::array<std::function<void(void)>, 2> openGripperHandlers;
-	std::array<std::function<void(RoboCompKinovaArm::TPose, RoboCompKinovaArm::ArmJoints)>, 2> setCenterOfToolHandlers;
+	std::array<std::function<void(RoboCompKinovaArm::TPose&, RoboCompKinovaArm::ArmJoints&)>, 2> setCenterOfToolHandlers;
+	std::array<std::function<bool(float&)>, 2> setGripperPosHandlers;
 
 };
 

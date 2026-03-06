@@ -32,6 +32,45 @@ module RoboCompFullPoseEstimation
 		float m33;
 		long timestamp;
 	};
+	struct CovMatrix
+	{
+		float m00;
+		float m01;
+		float m02;
+		float m03;
+		float m04;
+		float m05;
+		float m10;
+		float m11;
+		float m12;
+		float m13;
+		float m14;
+		float m15;
+		float m20;
+		float m21;
+		float m22;
+		float m23;
+		float m24;
+		float m25;
+		float m30;
+		float m31;
+		float m32;
+		float m33;
+		float m34;
+		float m35;
+		float m40;
+		float m41;
+		float m42;
+		float m43;
+		float m44;
+		float m45;
+		float m50;
+		float m51;
+		float m52;
+		float m53;
+		float m54;
+		float m55;
+	};
 	struct FullPoseEuler
 	{
 		string source;
@@ -56,6 +95,9 @@ module RoboCompFullPoseEstimation
 		float adv;
 		float side;
 		float rot;
+		CovMatrix poseCov;
+		CovMatrix velCov;
+		CovMatrix accCov;
 		int confidence;
 		long timestamp;
 	};

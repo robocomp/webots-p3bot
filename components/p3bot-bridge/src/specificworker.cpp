@@ -146,6 +146,13 @@ void SpecificWorker::initialize()
 
     right_hand.first = robot->getMotor("Right_Hand_LinearMotor_Right");
     right_hand.second = robot->getMotor("Right_Hand_LinearMotor_Left");
+
+    right_hand.first->setAvailableForce(40.0); // Fuerza suficiente para sostener, no para romper
+    right_hand.second->setAvailableForce(40.0);
+
+    KinovaArm_setGripperPos(0);
+    KinovaArm1_setGripperPos(0);
+
     /*
     if (right_hand.first && right_hand.second) {
         right_hand.first->setPosition(INFINITY); // Speed Mode
@@ -442,16 +449,42 @@ void SpecificWorker::OmniRobot_correctOdometer(int x, int z, float alpha)
 
 void SpecificWorker::OmniRobot_getBasePose(int &x, int &z, float &alpha)
 {
-    printNotImplementedWarningMessage("OmniRobot_getBasePose");
+    const double* shadow_position = robotNode->getPosition();
+    const double* shadow_orientation = robotNode->getOrientation();
+
+    x = round(shadow_position[0]);
+    z = round(shadow_position[1]);
+
+    alpha = (float)atan2(shadow_orientation[0], shadow_orientation[3]);
+    // std::cout << "X: " << x << " Z: " << z << " Alpha: " << alpha << std::endl;
+
+
 }
 
 void SpecificWorker::OmniRobot_getBaseState(RoboCompGenericBase::TBaseState &state)
 {
-    state.x = robotNode->getField("translation")->getSFVec3f()[0];
-    state.z = robotNode->getField("translation")->getSFVec3f()[1];
-    state.alpha = robotNode->getField("rotation")->getSFRotation()[3];
-}
+    const double* shadow_position = robotNode->getPosition();
+    const double* shadow_orientation = robotNode->getOrientation();
 
+    state.x = (float)shadow_position[0];
+    state.z = (float)shadow_position[1];
+
+    state.alpha = (float)atan2(shadow_orientation[0], shadow_orientation[3]);
+
+    state.correctedX = state.x;
+    state.correctedZ = state.z;
+    state.correctedAlpha = state.alpha;
+
+    const double* velocity = robotNode->getVelocity(); // Devuelve [vx, vy, vz, wx, wy, wz]
+    state.advVx = (float)velocity[0];
+    state.advVz = (float)velocity[2];
+    state.rotV = (float)velocity[5]; // Velocidad angular en Y
+
+    state.isMoving = (abs(state.advVx) > 0.001f || abs(state.advVz) > 0.001f || abs(state.rotV) > 0.001f);
+
+    // Debug
+    //std::cout << "X: " << state.x << " Z: " << state.z << " Alpha: " << state.alpha << std::endl;
+}
 void SpecificWorker::OmniRobot_resetOdometer()
 {
     printNotImplementedWarningMessage("OmniRobot_resetOdometer");
@@ -557,7 +590,7 @@ void SpecificWorker::KinovaArm_setCenterOfTool(RoboCompKinovaArm::TPose pose, Ro
 
 bool SpecificWorker::KinovaArm_setGripperPos(float pos)
 {
-    pos = std::clamp(pos, 0.0f, 1.0f);
+    pos = 1 - std::clamp(pos, 0.0f, 1.0f);
 
     float target = armsMinMaxPosition.first + pos * (armsMinMaxPosition.second - armsMinMaxPosition.first);     // Convertimos de [0,1] a [minPosition,maxPosition]
 
@@ -635,7 +668,7 @@ bool SpecificWorker::KinovaArm1_setGripperPos(float pos)
     pos = std::clamp(pos, 0.0f, 1.0f);
 
     float target = armsMinMaxPosition.first + pos * (armsMinMaxPosition.second - armsMinMaxPosition.first);     // Convertimos de [0,1] a [minPosition,maxPosition]
-    cout << target << endl;
+    // cout << target << endl;
     left_hand.first->setPosition(target);
     left_hand.second->setPosition(target);
 
@@ -661,6 +694,13 @@ RoboCompCamera360RGB::TImage SpecificWorker::Camera360RGB_getROI(int cx, int cy,
 
 #pragma region LIDAR3D_INTERFACE
 
+RoboCompLidar3D::TColorCloudData SpecificWorker::Lidar3D_getColorCloudData()
+{
+	RoboCompLidar3D::TColorCloudData ret{};
+	//implementCODE
+
+	return ret;
+}
 RoboCompLidar3D::TData SpecificWorker::Lidar3D_getLidarData(std::string name, float start, float len, int decimationDegreeFactor)
 {
     return (pars.delay && helios_delay_queue.full()) ? helios_delay_queue.back() : double_buffer_helios.get_idemp();
@@ -793,7 +833,7 @@ RoboCompKinovaArm::TJoints SpecificWorker::getJoints(std::vector<webots::Positio
                std::chrono::time_point<std::chrono::high_resolution_clock>(
                std::chrono::milliseconds(ret.timestamp))).count();
     
-    std::cout << "get " << diff << " ms" << std::endl << std::flush;
+    // std::cout << "get " << diff << " ms" << std::endl << std::flush;
     
     return ret;
 }

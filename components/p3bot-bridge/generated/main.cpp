@@ -1,5 +1,5 @@
 /*
- *    Copyright (C) 2025 by YOUR NAME HERE
+ *    Copyright (C) 2026 by YOUR NAME HERE
  *
  *    This file is part of RoboComp
  *
@@ -173,7 +173,7 @@ void subscribe( const Ice::CommunicatorPtr& communicator,
                 const std::string& topicBaseName,
                 SpecificWorker* worker,
                 int index,
-                std::shared_ptr<IceStorm::TopicPrx> topic,
+                std::shared_ptr<IceStorm::TopicPrx>& topic,
                 Ice::ObjectPrxPtr& proxy, 
                 const std::string& programName)
 {

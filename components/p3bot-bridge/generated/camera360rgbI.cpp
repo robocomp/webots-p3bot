@@ -1,5 +1,5 @@
 /*
- *    Copyright (C) 2025 by YOUR NAME HERE
+ *    Copyright (C) 2026 by YOUR NAME HERE
  *
  *    This file is part of RoboComp
  *
@@ -21,7 +21,7 @@
 Camera360RGBI::Camera360RGBI(GenericWorker *_worker, const size_t id): worker(_worker), id(id)
 {
 	getROIHandlers = {
-		[this](auto a, auto b, auto c, auto d, auto e, auto f) { return worker->Camera360RGB_getROI(a, b, c, d, e, f); }
+		[this](auto &a, auto &b, auto &c, auto &d, auto &e, auto &f) { return worker->Camera360RGB_getROI(a, b, c, d, e, f); }
 	};
 
 }

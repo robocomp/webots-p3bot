@@ -1,5 +1,5 @@
 /*
- *    Copyright (C) 2025 by YOUR NAME HERE
+ *    Copyright (C) 2026 by YOUR NAME HERE
  *
  *    This file is part of RoboComp
  *
@@ -26,8 +26,8 @@ KinovaArmI::KinovaArmI(GenericWorker *_worker, const size_t id): worker(_worker)
 	};
 
 	getCenterOfToolHandlers = {
-		[this](auto a) { return worker->KinovaArm_getCenterOfTool(a); },
-		[this](auto a) { return worker->KinovaArm1_getCenterOfTool(a); }
+		[this](auto &a) { return worker->KinovaArm_getCenterOfTool(a); },
+		[this](auto &a) { return worker->KinovaArm1_getCenterOfTool(a); }
 	};
 
 	getGripperStateHandlers = {
@@ -46,13 +46,13 @@ KinovaArmI::KinovaArmI(GenericWorker *_worker, const size_t id): worker(_worker)
 	};
 
 	moveJointsWithAngleHandlers = {
-		[this](auto a) { return worker->KinovaArm_moveJointsWithAngle(a); },
-		[this](auto a) { return worker->KinovaArm1_moveJointsWithAngle(a); }
+		[this](auto &a) { return worker->KinovaArm_moveJointsWithAngle(a); },
+		[this](auto &a) { return worker->KinovaArm1_moveJointsWithAngle(a); }
 	};
 
 	moveJointsWithSpeedHandlers = {
-		[this](auto a) { return worker->KinovaArm_moveJointsWithSpeed(a); },
-		[this](auto a) { return worker->KinovaArm1_moveJointsWithSpeed(a); }
+		[this](auto &a) { return worker->KinovaArm_moveJointsWithSpeed(a); },
+		[this](auto &a) { return worker->KinovaArm1_moveJointsWithSpeed(a); }
 	};
 
 	openGripperHandlers = {
@@ -61,8 +61,13 @@ KinovaArmI::KinovaArmI(GenericWorker *_worker, const size_t id): worker(_worker)
 	};
 
 	setCenterOfToolHandlers = {
-		[this](auto a, auto b) { return worker->KinovaArm_setCenterOfTool(a, b); },
-		[this](auto a, auto b) { return worker->KinovaArm1_setCenterOfTool(a, b); }
+		[this](auto &a, auto &b) { return worker->KinovaArm_setCenterOfTool(a, b); },
+		[this](auto &a, auto &b) { return worker->KinovaArm1_setCenterOfTool(a, b); }
+	};
+
+	setGripperPosHandlers = {
+		[this](auto &a) { return worker->KinovaArm_setGripperPos(a); },
+		[this](auto &a) { return worker->KinovaArm1_setGripperPos(a); }
 	};
 
 }
@@ -196,6 +201,20 @@ void KinovaArmI::setCenterOfTool(RoboCompKinovaArm::TPose pose, RoboCompKinovaAr
 		 setCenterOfToolHandlers[id](pose, referencedTo);
 	else
 		throw std::out_of_range("Invalid setCenterOfTool id: " + std::to_string(id));
+
+}
+
+bool KinovaArmI::setGripperPos(float pos, const Ice::Current&)
+{
+
+    #ifdef HIBERNATION_ENABLED
+		worker->hibernationTick();
+	#endif
+    
+	if (id < setGripperPosHandlers.size())
+		return  setGripperPosHandlers[id](pos);
+	else
+		throw std::out_of_range("Invalid setGripperPos id: " + std::to_string(id));
 
 }
 
