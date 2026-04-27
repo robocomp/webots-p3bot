@@ -151,7 +151,10 @@ void SpecificWorker::initialize()
     right_hand.second->setAvailableForce(40.0);
 
     KinovaArm_setGripperPos(0);
+    KinovaArm_moveJointsWithAngle(RoboCompKinovaArm::TJointAngles{RoboCompKinovaArm::Angles{0.698, -2.0944, 1.047, -2.2689, -0.3491, -1.1345, 1.4835}});
     KinovaArm1_setGripperPos(0);
+    KinovaArm1_moveJointsWithAngle(RoboCompKinovaArm::TJointAngles{RoboCompKinovaArm::Angles{-0.698, -2.0944, -1.047, -2.2689, 0.3491, -1.1345, 1.4835}});
+
 
     /*
     if (right_hand.first && right_hand.second) {
@@ -665,7 +668,8 @@ void SpecificWorker::KinovaArm1_setCenterOfTool(RoboCompKinovaArm::TPose pose, R
 
 bool SpecificWorker::KinovaArm1_setGripperPos(float pos)
 {
-    pos = std::clamp(pos, 0.0f, 1.0f);
+    pos = 1 - std::clamp(pos, 0.0f, 1.0f);
+
 
     float target = armsMinMaxPosition.first + pos * (armsMinMaxPosition.second - armsMinMaxPosition.first);     // Convertimos de [0,1] a [minPosition,maxPosition]
     // cout << target << endl;
