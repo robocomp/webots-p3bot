@@ -252,11 +252,11 @@ PROTO KinovaGen3 [
                                                         }
                                                       ]
                                                       endPoint Solid {
-                                                        translation 0.005 0 -0.12 # Ajustado para que sobresalga de la muñeca
+                                                        translation 0.005 0 -0.19 # Ajustado para que sobresalga de la muñeca
                                                         children [
                                                           DEF Finger_Shape Shape {
                                                             appearance USE base_link_material
-                                                            geometry DEF basic_finger Box { size 0.01 0.02 0.05 } # Dedo un poco más largo
+                                                            geometry DEF basic_finger Box { size 0.01 0.02 0.045 } # Dedo un poco más largo
                                                           }
                                                         ]
                                                         name %<= '"' + fields.prefix.value + "Hand_Finger_Right" + '"'; >%
@@ -282,7 +282,7 @@ PROTO KinovaGen3 [
                                                         }
                                                       ]
                                                       endPoint Solid {
-                                                        translation -0.005 0 -0.12
+                                                        translation -0.005 0 -0.19
                                                         children [ USE Finger_Shape ]
                                                         name %<= '"' + fields.prefix.value + "Hand_Finger_Left" + '"'; >%
                                                         contactMaterial "finger_material"
