@@ -51,16 +51,22 @@ PROTO P3Bot [
             RangeFinder{
               name "zed-ranger"
               fieldOfView 2.09
-              width 1920
-              height 1080
+              # 1280x720 float32 depth = 3686400 bytes = EXACTLY rc::media::MAX_IMAGE_BYTES, the
+              # fixed ImageFrame payload of the zero-copy media plane (common/media_transport/idl/
+              # image_frame.idl). At 1920x1080 every frame was silently dropped by the publisher's
+              # size guard (zed_camera/src/dds_publisher.cpp:94) and the plane read 0.0 Hz while
+              # zed_camera itself reported a healthy 30 fps. Shadow.proto uses these same numbers.
+              width 1280
+              height 720
               maxRange 20
             }
           ]
           rotation 0 0 -1 0
           name "zed"
           fieldOfView 2.09
-          width 1920
-          height 1080
+          # Must match the zed-ranger above: 1280x720 RGBA = the media plane's MAX_IMAGE_BYTES.
+          width 1280
+          height 720
           projection "planar"
     }
     Lidar {
@@ -78,6 +84,13 @@ PROTO P3Bot [
     }
     Accelerometer {
       resolution 0.001
+    }
+    # Default name "gyro", which is what the bridge asks getGyro() for. Without it the IMU interface
+    # can serve acceleration and orientation but must report the angular-velocity block as unknown
+    # (cov = -1), and there is then no heading source independent of the wheels to weigh the wheel
+    # odometry against -- which is the whole reason the gyro channel exists separately from
+    # FullPoseEstimationPub. No `resolution`, so it reports to double precision like Shadow.proto's.
+    Gyro {
     }
   ] # Is `Robot.children.GROUP_SENSORS.children`. 
   field MFNode            wheels
