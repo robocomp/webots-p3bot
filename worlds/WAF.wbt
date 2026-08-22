@@ -2,19 +2,18 @@
 
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
 EXTERNPROTO "../protos/P3Bot.proto"
+EXTERNPROTO "../protos/KinovaGen3.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/tables/protos/Desk.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/appearances/protos/Parquetry.proto"
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/kitchen/utensils/protos/Glass.proto"
-EXTERNPROTO "../protos/KinovaGen3.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/drinks/protos/WaterBottle.proto"
 
 WorldInfo {
   info [
     "Simulation of the ROBOLAB P3Bot robot."
   ]
   title "ROBOLAB P3Bot"
-  basicTimeStep 16
+  basicTimeStep 8
   contactProperties [
     ContactProperties {
       material1 "InteriorWheelMat"
@@ -38,46 +37,406 @@ WorldInfo {
         10, 0
       ]
     }
+    ContactProperties {
+      material1 "finger_material"
+      coulombFriction [
+        1.5
+      ]
+      bounce 0
+    }
   ]
 }
 Viewpoint {
-  orientation 0.19044038781304057 -0.9210744557227462 -0.33963849267223173 5.81332058985342
-  position -1.7839411675345096 -0.24796405067268537 0.9670804904523459
+  orientation -0.6227671553888794 -0.000530270281523082 0.782407048141996 3.1429295929579277
+  position 0.69109654159185 0.06944648633127315 5.563479882680815
 }
 TexturedBackground {
 }
 TexturedBackgroundLight {
 }
-RectangleArena {
-  floorSize 6 6
-  floorAppearance Parquetry {
-    type "light strip"
+Solid {
+  translation 0.54 0 0.64
+  children [
+    Shape {
+      appearance Parquetry {
+        type "light strip"
+      }
+      geometry Plane {
+        size 8 6
+      }
+    }
+  ]
+  name "floor"
+  boundingObject Plane {
+    size 8 6
   }
-  wallHeight 2
 }
-Glass {
-  hidden linearVelocity_0 3.820480421357124e-18 4.6969069123877727e-17 -6.220918682437631e-11
-  hidden angularVelocity_0 -1.2330471693278443e-15 -9.484978225598803e-17 1.3910823566568491e-16
-  translation 2 1.578913869862417e-17 0.7089833230039798
-  rotation 0.16774248693285096 0.9858308453348712 4.9637844289501e-05 1.931572984941838e-15
+Solid {
+  translation 0.54 -3.05 1.64
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.85 0.85 0.82
+        roughness 0.8
+        metalness 0
+      }
+      geometry Box {
+        size 8.2 0.1 2
+      }
+    }
+  ]
+  name "wall_south"
+  boundingObject Box {
+    size 8.2 0.1 2
+  }
 }
-Glass {
-  hidden linearVelocity_0 -1.3178976985152989e-17 -1.4425044224576027e-17 -6.220916592731734e-11
-  hidden angularVelocity_0 4.742489112799413e-16 -5.110533926975133e-16 -1.8222646347397363e-16
-  translation -2 -3.5213833602723065e-18 0.7089833230039797
-  rotation 0.6525163186714686 -0.23867015039414155 -0.7192072115727651 5.128301350078649e-16
-  name "glass(1)"
+Solid {
+  translation 0.54 3.05 1.64
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.85 0.85 0.82
+        roughness 0.8
+        metalness 0
+      }
+      geometry Box {
+        size 8.2 0.1 2
+      }
+    }
+  ]
+  name "wall_north"
+  boundingObject Box {
+    size 8.2 0.1 2
+  }
+}
+Solid {
+  translation -3.51 0 1.64
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.85 0.85 0.82
+        roughness 0.8
+        metalness 0
+      }
+      geometry Box {
+        size 0.1 6 2
+      }
+    }
+  ]
+  name "wall_west"
+  boundingObject Box {
+    size 0.1 6 2
+  }
+}
+Solid {
+  translation 4.59 0 1.64
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.85 0.85 0.82
+        roughness 0.8
+        metalness 0
+      }
+      geometry Box {
+        size 0.1 6 2
+      }
+    }
+  ]
+  name "wall_east"
+  boundingObject Box {
+    size 0.1 6 2
+  }
+}
+Solid {
+  translation 3.74 2.2 1.64
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.72 0.6 0.5
+        roughness 0.8
+        metalness 0
+      }
+      geometry Box {
+        size 1.6 1.6 2
+      }
+    }
+  ]
+  name "column_ne"
+  boundingObject Box {
+    size 1.6 1.6 2
+  }
+}
+WaterBottle {
+  translation 0.8345098706757909 -0.07337240178357277 1.2679797777304902
+  rotation 0.7340594433203752 -0.001537158485767667 -0.6790834785326254 0.0008465966972507034
 }
 Desk {
-  translation -2.3 0 0
+  translation 0.772278 -0.0213383 0.56
   rotation 0 0 -1 -5.307179586466759e-06
   name "Table4"
 }
-Desk {
-  translation 2.3 0 0
-  rotation 0 0 1 -3.1415853071795863
-  name "Table2"
-}
 P3Bot {
-  
+  hidden position_1_0 0.7937984280742166
+  hidden rotation_2 0.9222640670575201 -0.38656046178168385 -1.286007371616885e-06 3.1415994289199487
+  hidden position_2_0 -2.0611992306483273
+  hidden rotation_3 0.3904001983671001 0.6509959110674246 -0.6509930943477226 2.397188360222576
+  hidden position_3_0 1.1978987522224482
+  hidden rotation_4 -0.7194672926132376 0.4911053359321476 0.4911032110246788 1.8942518769908296
+  hidden position_4_0 -2.20980791843761
+  hidden rotation_5 0.33499697481962903 0.6662510293015772 -0.6662481465762482 2.495100698874878
+  hidden position_5_0 -0.2507009095567865
+  hidden rotation_6 -0.984489714266373 -0.1240567121974324 -0.1240561754306428 1.586431191603302
+  hidden position_6_0 -1.144600856486321
+  hidden rotation_7 0.7392146257296625 0.47621617967892066 -0.47621411919363427 1.8684708456121228
+  hidden position_7_0 1.7015001707400257
+  hidden rotation_8 -0.527086770460894 0.6009087539418327 0.6009061539385153 2.17143272955199
+  hidden position_8_0 0.04149997658673138
+  hidden position_8_1 0.04150002770483317
+  hidden translation_9 0.04649997658673138 0 -0.19
+  hidden translation_10 -0.04650002770483317 0 -0.19
+  hidden position_11_0 -0.6979967431788824
+  hidden rotation_12 0.9397156977578275 0.3419567332079095 1.137619914674989e-06 3.1415995571267863
+  hidden position_12_0 -2.094398879791348
+  hidden rotation_13 0.3779636549318698 0.6546553231413369 -0.6546524905881397 2.4188622670016358
+  hidden position_13_0 -1.046999598876695
+  hidden rotation_14 -0.7746680573327333 -0.4471527318421259 -0.44715079710814903 1.8233909065527183
+  hidden position_14_0 -2.268907115140848
+  hidden rotation_15 0.31315384212225633 0.6715424683705477 -0.6715395627502975 2.534633891571319
+  hidden position_15_0 0.34910094625571825
+  hidden rotation_16 -0.9702818006083431 0.17110447211577703 0.17110373178342 1.6009641565971322
+  hidden position_16_0 -1.1345007983846944
+  hidden rotation_17 0.7429289395965074 0.4733172980987421 -0.4733152501562944 1.8636756722460244
+  hidden position_17_0 1.483499889915677
+  hidden rotation_18 -0.610936313501762 0.5598033282739141 0.5598009061249593 2.044751673539441
+  hidden position_18_0 0.04150002713482754
+  hidden position_18_1 0.04149997715674582
+  hidden translation_19 0.04650002713482754 0 -0.19
+  hidden translation_20 -0.046499977156745816 0 -0.19
+  translation 0 0 0.63458
+  rotation 0.001976227010431609 -0.0017332735998208913 -0.9999965451387477 1.5743783241502933
+  arms [
+    DEF KINOVA_ARM_R KinovaGen3 {
+      translation 0 -0.0517612 1.04883
+      rotation 1 0 0 2.01001
+      name "kinova_arm_r"
+      joint1Position 0
+      joint2Position 0
+      joint3Position 0
+      joint4Position 0
+      joint5Position 0
+      joint6Position 0
+      joint7Position 0
+    }
+    DEF KINOVA_ARM_L KinovaGen3 {
+      translation 0.002 0.055 1.052
+      rotation 1 0 0 -2.0100053071795863
+      name "kinova_arm_l"
+      prefix "Left_"
+      joint1Position 0
+      joint2Position 0
+      joint3Position 0
+      joint4Position 0
+      joint5Position 0
+      joint6Position 0
+      joint7Position 0
+    }
+  ]
+  wheels [
+    DEF WHEEL1 HingeJoint {
+      jointParameters HingeJointParameters {
+        position -2.1896752360602516
+        axis 0 1 0
+        anchor 0.125 -0.24 0.08
+      }
+      device [
+        RotationalMotor {
+          name "wheel1"
+          maxVelocity 30
+        }
+        PositionSensor {
+          name "wheel1sensor"
+        }
+      ]
+      endPoint Solid {
+        translation 0.125 -0.24 0.08
+        rotation 0 -0.9999999999999999 0 2.1896752360602516
+        children [
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.75 0.75 0.75
+              roughness 0.3
+            }
+            geometry Mesh {
+              url [
+                "../protos/p3bot_meshes/omnidirectional_wheel.stl"
+              ]
+            }
+          }
+        ]
+        name "wheel1"
+        contactMaterial "InteriorWheelMat"
+        boundingObject Pose {
+          rotation 1 0 0 1.5708
+          children [
+            Cylinder {
+              height 0.04
+              radius 0.08
+              subdivision 24
+            }
+          ]
+        }
+        physics Physics {
+          density -1
+          mass 0.4
+        }
+      }
+    }
+    DEF WHEEL2 HingeJoint {
+      jointParameters HingeJointParameters {
+        position -15.7760241754398
+        axis 0 -1 0
+        anchor 0.125 0.24 0.08
+      }
+      device [
+        RotationalMotor {
+          name "wheel2"
+          maxVelocity 30
+        }
+        PositionSensor {
+          name "wheel2sensor"
+        }
+      ]
+      endPoint Solid {
+        translation 0.125 0.24 0.08
+        rotation 0.9994187048598588 -0.00215242461320652 -0.034023807025769855 3.1414461010404153
+        children [
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.75 0.75 0.75
+              roughness 0.3
+            }
+            geometry Mesh {
+              url [
+                "../protos/p3bot_meshes/omnidirectional_wheel.stl"
+              ]
+            }
+          }
+        ]
+        name "wheel2"
+        contactMaterial "ExteriorWheelMat"
+        boundingObject Pose {
+          rotation 1 0 0 1.5708
+          children [
+            Cylinder {
+              height 0.04
+              radius 0.08
+              subdivision 24
+            }
+          ]
+        }
+        physics Physics {
+          density -1
+          mass 0.4
+        }
+      }
+    }
+    DEF WHEEL3 HingeJoint {
+      jointParameters HingeJointParameters {
+        position -0.6414360882822983
+        axis 0 1 0
+        anchor -0.125 -0.24 0.08
+      }
+      device [
+        RotationalMotor {
+          name "wheel3"
+          maxVelocity 30
+        }
+        PositionSensor {
+          name "wheel3sensor"
+        }
+      ]
+      endPoint Solid {
+        translation -0.125 -0.24 0.08
+        rotation 0 -1 0 0.6414360882822984
+        children [
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.75 0.75 0.75
+              roughness 0.3
+            }
+            geometry Mesh {
+              url [
+                "../protos/p3bot_meshes/omnidirectional_wheel.stl"
+              ]
+            }
+          }
+        ]
+        name "wheel3"
+        contactMaterial "ExteriorWheelMat"
+        boundingObject Pose {
+          rotation 1 0 0 1.5708
+          children [
+            Cylinder {
+              height 0.04
+              radius 0.08
+              subdivision 24
+            }
+          ]
+        }
+        physics Physics {
+          density -1
+          mass 0.4
+        }
+      }
+    }
+    DEF WHEEL4 HingeJoint {
+      jointParameters HingeJointParameters {
+        position -16.757562253500826
+        axis 0 -1 0
+        anchor -0.125 0.24 0.08
+      }
+      device [
+        RotationalMotor {
+          name "wheel4"
+          maxVelocity 30
+        }
+        PositionSensor {
+          name "wheel4sensor"
+        }
+      ]
+      endPoint Solid {
+        translation -0.125 0.24 0.08
+        rotation 0.8654229178544106 -0.0018638410309558863 -0.5010386206161853 3.139434504186835
+        children [
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.75 0.75 0.75
+              roughness 0.3
+            }
+            geometry Mesh {
+              url [
+                "../protos/p3bot_meshes/omnidirectional_wheel.stl"
+              ]
+            }
+          }
+        ]
+        name "wheel4"
+        contactMaterial "InteriorWheelMat"
+        boundingObject Pose {
+          rotation 1 0 0 1.5708
+          children [
+            Cylinder {
+              height 0.04
+              radius 0.08
+              subdivision 24
+            }
+          ]
+        }
+        physics Physics {
+          density -1
+          mass 0.4
+        }
+      }
+    }
+  ]
 }

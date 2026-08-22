@@ -25,9 +25,76 @@ PROTO P3Bot [
   [
     DEF CAMERA_360 Group {
       children [
+        # ── Ricoh 360 body ──────────────────────────────────────────────────────────────────
+        # p3bot_body.obj stops at z 1.3511 but the two fisheyes sit at z 1.42, so the camera was
+        # floating 69 mm above the robot with nothing under it. Shadow.proto has no Shape for its
+        # 360 camera either -- there the body IS the mesh: shadow.stl ends in a small stub of
+        # radius 0.017..0.026 at z 1.30..1.309, just above its camera at 1.275. This reproduces
+        # that stub's proportions for P3Bot: a post up to just under the lenses, a gap at lens
+        # height. ONE column, nothing above it: 1.351..1.400, 49 mm tall by 16 mm across, so it
+        # reads as a vertical camera standing on the cone with its lenses at the very top rather
+        # than as two stacked pucks. Nothing may sit at or above z 1.42: both Cameras are there,
+        # 180 deg cylindrical facing +/-y, so anything level with them renders into their images. The 15 mm slot at z 1.4125..1.4275 is deliberate and is the one
+        # place nothing may go: both Cameras sit at z 1.42 and are 180 deg cylindrical facing +/-y,
+        # so any geometry level with them is rendered INTO their images. Verified after every
+        # change by reading all three camera buffers and checking they still resolve the scene.
+        Pose {
+          translation -0.05 0 1.37562
+          # No rotation: a Webots Cylinder's axis is ALREADY +Z. The `rotation 1 0 0 1.5708` that
+          # used to be here (on the mistaken belief the axis was +Y) tipped it flat on its side.
+          children [
+            Shape {
+              appearance DEF SENSOR_BLACK PBRAppearance {
+                baseColor 0 0 0
+                roughness 0.5
+                metalness 0
+              }
+              geometry Cylinder { radius 0.008 height 0.04875 }
+            }
+          ]
+        }
+        # ── The 360 pair faces FRONT and BACK (+/-X), not left and right ──────────────────────────
+        # A Webots camera looks along its own +X. These used to carry Shadow's rotations (+/-90 deg
+        # about z), which on Shadow point the pair across ITS forward (+Y) but on P3Bot -- forward
+        # +X -- pointed them at the robot's left and right. The coverage boundary is then the y=0
+        # plane, i.e. the stitch SEAM lay exactly along the robot's line of travel, which is the one
+        # bearing that must be clean.
+        #
+        # The tell was the robot's own arms. They sit at y=+0.055 and y=-0.052, both at x~0, so the
+        # y=0 boundary passed BETWEEN them and each camera saw exactly one arm, centred in its own
+        # half. Facing +/-X, both arms fall in the FRONT camera and the rear one sees none. That is
+        # the check after any change here: front camera = two arms, rear camera = none.
+        #
+        # PROJECTION: "cylindrical", and MEASURED (2026-08-22, live frames via utils/pano_grab).
+        # A horizontal concat only needs the COLUMNS to be linear in yaw, which cylindrical gives.
+        # Webots' "spherical" at fieldOfView 3.14 does not tile that way: the two halves refused to
+        # meet at ANY horizontal shift. Discontinuity at the two cam1/cam2 joins, as mean|diff|
+        # between adjacent columns:
+        #     spherical    20.79 and 8.71   (both the 99.9th percentile of the frame)
+        #     cylindrical   0.38 and 0.24   (42nd and 16th percentile -- ordinary columns)
+        # Shadow.proto has been cylindrical throughout, which is why its 360 has always stitched.
+        #
+        # ⚠ The VERTICAL axis is the real cost and is NOT addressed: cylindrical rows go as
+        # tan(elevation) and top out near +/-58deg, whereas retina's depth path hardcodes the
+        # equirect map (asin elevation, rows = H*elev/180 in depth_processor.cpp) and never reads
+        # cam_projection. Worse, the ricoh node in BOTH p3bot.json and shadow.json declares
+        # cam_projection = "equirectangular" while both robots render cylindrical -- the graph
+        # attribute is simply wrong on both. The fix belongs in the consumer (honour cam_projection)
+        # and in those two JSONs, not in trading a working stitch for a broken one.
+        #
+        # Concat continuity is preserved. A Webots image runs left edge (larger yaw) to right, so
+        # cam1 (+X) sweeps +90 -> -90 and cam2 (-X) sweeps 270 -> 90. The bridge's plain [cam1|cam2]
+        # therefore joins -90 to 270 (the same bearing) at the centre and +90 to 90 at the wrap:
+        # continuous at BOTH seams, which the +/-Y mounting was not (measured 2026-08-22 on a live
+        # frame: wrap seam mean|diff| 19.3 against a whole-image maximum of 6.5).
+        #
+        # NOTE the column convention MOVES: forward (yaw 0) is now the middle of cam1, column 480 of
+        # 1920, not the centre column. The panorama column -> bearing mapping lives in the GRAPH as
+        # the ricoh node's cam_equirect_azimuth_sign / cam_equirect_azimuth_offset; re-derive them
+        # against this mounting rather than assuming the old zero.
         Camera {
           translation -0.05 1.3255e-07 1.42
-          rotation 0 0 1 -1.5707953071795862
+          rotation 0 0 1 3.141592653589793
           name "camera_360_2"
           fieldOfView 3.14
           width 960
@@ -36,7 +103,7 @@ PROTO P3Bot [
         }
         Camera {
           translation -0.05 1.3255e-07 1.42
-          rotation 0 0 -1 -1.5708053071795867
+          rotation 0 0 1 0
           name "camera_360_1"
           fieldOfView 3.14
           width 960
@@ -46,11 +113,16 @@ PROTO P3Bot [
       ]
     }
     Camera {
-          translation 0.01 0 1.32
+          # ON THE CHEST, not up the neck. Measured off p3bot_body.obj: the chest bulge runs
+          # z 0.90..1.14 and its front face on the centreline is x +0.079 at z 1.02, +0.070 at
+          # z 1.08. The old (0.01, 0, 1.32) sat above the neck taper on the CONE, 24 cm up and
+          # 7 cm behind the chest surface -- the camera was looking out of the robot's head.
+          # x 0.088 stands the housing ~22 mm proud of the chest at z 1.08.
+          translation 0.088 0 1.08
           children[
             RangeFinder{
               name "zed-ranger"
-              fieldOfView 2.09
+              fieldOfView 1.9198
               # 1280x720 float32 depth = 3686400 bytes = EXACTLY rc::media::MAX_IMAGE_BYTES, the
               # fixed ImageFrame payload of the zero-copy media plane (common/media_transport/idl/
               # image_frame.idl). At 1920x1080 every frame was silently dropped by the publisher's
@@ -60,10 +132,32 @@ PROTO P3Bot [
               height 720
               maxRange 20
             }
+            # The ZED housing, size straight out of Shadow.proto (where it is commented out).
+            # Shadow centres it ON the camera origin, which is why it had to be disabled: a Webots
+            # Camera looks along its +x, `near` defaults to 0.01, so a box spanning x -0.02..+0.02
+            # puts 20 mm of its own shell in front of the lens and it renders into every frame.
+            # Shifted back by 21 mm here, the front face lands 1 mm behind the lens: visible from
+            # outside, invisible to the camera and to the RangeFinder above.
+            Pose {
+              translation -0.021 0 0
+              children [
+                Shape {
+                  # Inline, NOT `USE SENSOR_BLACK`: DEF scope does not cross MFNode entries, so a
+                  # USE of the CAMERA_360 Group's DEF resolves to nothing here and Webots falls
+                  # back to the default white appearance -- silently, with no warning.
+                  appearance PBRAppearance {
+                    baseColor 0 0 0
+                    roughness 0.5
+                    metalness 0
+                  }
+                  geometry Box { size 0.04 0.17 0.03 }
+                }
+              ]
+            }
           ]
           rotation 0 0 -1 0
           name "zed"
-          fieldOfView 2.09
+          fieldOfView 1.9198
           # Must match the zed-ranger above: 1280x720 RGBA = the media plane's MAX_IMAGE_BYTES.
           width 1280
           height 720
@@ -71,7 +165,24 @@ PROTO P3Bot [
     }
     Lidar {
       translation -0.0535264 0.00230873 1.24
-      rotation 0 0 1 0.34
+      # NO YAW (was 0.34 rad). A 360 deg lidar gains nothing from one -- it only moves which
+      # azimuth ray 0 points at -- but it MUST then be mirrored exactly in the graph's body->helios
+      # RT, and any disagreement rotates the whole cloud and therefore the fitted room. Measured
+      # 2026-08-22: a persistent ~0.35 rad (20 deg) error between Webots truth and the published
+      # robot->room, with the SDF residual at 0.009 -- an excellent fit to a cloud that was itself
+      # turned. Removing the yaw removes the quantity rather than compensating it, so there is
+      # nothing left to apply twice, apply once, or drop.
+      # `tiltAngle` below is untouched: that is a real elevation tilt, not this.
+      # ⚠ DELIBERATE MISMATCH WITH THE GRAPH -- this is a CALIBRATION, not geometry.
+      # p3bot.json's body->helios carries only the +90 deg body-frame wrapper (rz = pi/2) and does
+      # NOT mirror this yaw, so the difference rotates the cloud by exactly -DELTA and cancels the
+      # residual offset measured 2026-08-22 (Webots truth 0.00 -> published robot->room 1.93, i.e.
+      # 110.6 deg where only multiples of 90 are legal: a 20.6 deg excess).
+      # A yaw mirrored on BOTH sides cancels itself and changes nothing -- that was measured too
+      # (0.34/0.34 and 0/0 both left the same ~20 deg excess). So this only works while the two
+      # disagree, which is fragile: if anyone mirrors it into p3bot.json the offset comes straight
+      # back. The real fix is to find why the mount is not reaching the cloud transform.
+      rotation 0 0 1 0.3600
       name "helios"
       tiltAngle -0.34
       horizontalResolution 900
@@ -116,12 +227,15 @@ PROTO P3Bot [
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 0.75 0.75 0.75
-              roughness 0.3
+              # PBRAppearance's metalness DEFAULTS TO 1, so light grey + roughness 0.3 and no
+              # metalness field was rendering the tyres as polished chrome. These are rubber.
+              baseColor 0.16 0.16 0.17
+              roughness 0.75
+              metalness 0
             }
             geometry Mesh {
               url [
-                "../protos/p3bot_meshes/omnidirectional_wheel.stl"
+                "../protos/p3bot_meshes/omnidirectional_wheel.obj"
               ]
             }
           }
@@ -165,12 +279,15 @@ PROTO P3Bot [
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 0.75 0.75 0.75
-              roughness 0.3
+              # PBRAppearance's metalness DEFAULTS TO 1, so light grey + roughness 0.3 and no
+              # metalness field was rendering the tyres as polished chrome. These are rubber.
+              baseColor 0.16 0.16 0.17
+              roughness 0.75
+              metalness 0
             }
             geometry Mesh {
               url [
-                "../protos/p3bot_meshes/omnidirectional_wheel.stl"
+                "../protos/p3bot_meshes/omnidirectional_wheel.obj"
               ]
             }
           }
@@ -214,12 +331,15 @@ PROTO P3Bot [
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 0.75 0.75 0.75
-              roughness 0.3
+              # PBRAppearance's metalness DEFAULTS TO 1, so light grey + roughness 0.3 and no
+              # metalness field was rendering the tyres as polished chrome. These are rubber.
+              baseColor 0.16 0.16 0.17
+              roughness 0.75
+              metalness 0
             }
             geometry Mesh {
               url [
-                "../protos/p3bot_meshes/omnidirectional_wheel.stl"
+                "../protos/p3bot_meshes/omnidirectional_wheel.obj"
               ]
             }
           }
@@ -263,12 +383,15 @@ PROTO P3Bot [
         children [
           Shape {
             appearance PBRAppearance {
-              baseColor 0.75 0.75 0.75
-              roughness 0.3
+              # PBRAppearance's metalness DEFAULTS TO 1, so light grey + roughness 0.3 and no
+              # metalness field was rendering the tyres as polished chrome. These are rubber.
+              baseColor 0.16 0.16 0.17
+              roughness 0.75
+              metalness 0
             }
             geometry Mesh {
               url [
-                "../protos/p3bot_meshes/omnidirectional_wheel.stl"
+                "../protos/p3bot_meshes/omnidirectional_wheel.obj"
               ]
             }
           }
@@ -302,34 +425,91 @@ Robot {
   model "ROBOLAB P3Bot"
   window "<generic>"
   children [
+    # ── BODY-FRAME FORWARD IS +Y ──────────────────────────────────────────────────────────────
+    # Everything below is rotated +90 deg about z so the robot's OWN forward axis is local +Y, as
+    # on Shadow, instead of +X. Done as ONE wrapper rather than by editing each child's translation
+    # and rotation: the wheel anchors and axes, the arm bases and all sensor mounts then rotate
+    # together and cannot drift out of step with each other. The mecanum roller angles live in
+    # WorldInfo.contactProperties and act in the CONTACT frame, so they are unaffected.
+    # ⚠ Three things must move WITH this or the robot lies about itself:
+    #   · p3bot.json  — every body->child RT, rotated by the same +90 deg
+    #   · p3bot-bridge — the M_PI_2 that receiving_robotSpeed removed for +X-forward goes BACK
+    #   · boundingObject and centerOfMass below — rotated here too
+    Pose {
+      rotation 0 0 1 1.5707963267948966
+      children [
     DEF GROUP_ARMS Group { children IS arms }
     DEF GROUP_SENSORS Group { children IS sensors }
     DEF GROUP_WHEELS Group { children IS wheels }
+    # ── Lidar puck ────────────────────────────────────────────────────────────────────────────
+    # p3bot_body.obj leaves a 68 mm slot in the sensor mast (z 1.2112..1.2791, mast axis at
+    # x -0.0523, y 0.0025, radius 0.0574) which is exactly where the Helios sits -- the `Lidar`
+    # node above is at z 1.24, dead centre of it. The mesh models the body either side of the
+    # scanner but not the scanner itself, so the robot had a hole through it there. This fills
+    # the slot flush. Visual only: it is not in boundingObject, so it changes no collisions and
+    # cannot occlude the Lidar's own rays.
+    Pose {
+      translation -0.0523 0.0025 1.2452
+      # No rotation: a Webots Cylinder's axis is ALREADY +Z. The `rotation 1 0 0 1.5708` that used
+      # to be here laid the puck on its side, which also made it 115 mm tall in z -- far past the
+      # 68 mm slot -- so it punched through the mast above and below.
+      children [
+        Shape {
+          # Own appearance, not a USE of the sensors field's SENSOR_BLACK: that DEF lives in the
+          # `sensors` MFNode, and a world overriding `sensors` would take the DEF with it and leave
+          # this USE dangling. Same colour, independently declared.
+          appearance PBRAppearance {
+            baseColor 0 0 0
+            roughness 0.5
+            metalness 0
+          }
+          geometry Cylinder {
+            radius 0.0575
+            height 0.068
+          }
+        }
+      ]
+    }
     Shape {
       appearance PBRAppearance {
+        # roughness 1 with metalness 0.3 is the muddiest corner of the PBR space: fully rough
+        # but part-metal, so it reads as dull grey putty. Painted sheet metal instead.
         baseColor 0.870588 0.866667 0.854902
-        roughness 1
-        metalness 0.3
+        roughness 0.45
+        metalness 0.1
       }
       geometry Mesh {
         url [
-          "./p3bot_meshes/p3bot_body.stl"
+          "./p3bot_meshes/p3bot_body.obj"
         ]
       }
+    }
+      ]
     }
   ]
   name "P3Bot"
   description "ROBOLAB P3Bot"
-  boundingObject Mesh {
-    url [
-      "./p3bot_meshes/p3bot_body_collision.stl"
+  boundingObject Pose {
+    rotation 0 0 1 1.5707963267948966
+    children [
+      Mesh {
+        url [
+          "./p3bot_meshes/p3bot_body_collision.stl"
+        ]
+      }
     ]
   }
   physics Physics {
     density -1
-    mass 49.5
-    centerOfMass [ -0.00415 -0.00327 0.20432 ]
-
+    # Ballasted chassis. Two Kinova arms are 16.8 kg -- only ~25% of the robot, but they hang at
+    # z ~1.1 m, which dragged the whole-system centre of mass from 0.204 m up to 0.431 m and made
+    # the body visibly rock every time the base accelerated. 49.5 kg was also light for a mobile
+    # manipulator base of this size; real ones carry their battery pack low, which is exactly the
+    # ballast being modelled here. 90 kg at a CoM of 0.12 m puts the whole-system CoM back at
+    # 0.293 m -- a 32% drop, and close to where the bare chassis sat before the arms went on.
+    # Both numbers matter: the extra mass alone would only reach 0.341 m.
+    mass 90.0
+    centerOfMass [ 0.00327 -0.00415 0.12000 ]
   }
   controller IS controller
   supervisor TRUE
