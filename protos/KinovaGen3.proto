@@ -13,6 +13,19 @@ PROTO KinovaGen3 [
   field  SFString    prefix          "Right_"
   field  SFFloat     armsMinPosition 0
   field  SFFloat     armsMaxPosition 0.0425
+
+  # Initial Kinova joint pose in radians.
+  # Values match the "ideal/home" pose used by manipulation-with-ainf.
+  # With the existing P3Bot.proto, prefix "Left_" automatically mirrors
+  # joints 1, 3 and 5 so the two arms use the corresponding left/right pose.
+  field  SFBool      mirrorInitialPoseFromPrefix TRUE
+  field  SFFloat     joint1Position  0.698
+  field  SFFloat     joint2Position -2.0944
+  field  SFFloat     joint3Position  1.047
+  field  SFFloat     joint4Position -2.2689
+  field  SFFloat     joint5Position -0.3491
+  field  SFFloat     joint6Position -1.1345
+  field  SFFloat     joint7Position  1.4835
 ]
 {
   Solid {
@@ -21,18 +34,19 @@ PROTO KinovaGen3 [
     children [
       Shape {
         appearance DEF base_link_material PBRAppearance {
-          baseColor 0.752940 0.752940 0.752940
-          roughness 1.000000
-          metalness 0
+          baseColor 0.780000 0.782000 0.790000
+          roughness 0.350000
+          metalness 0.150000
         }
         geometry DEF base_link Mesh {
-          url "./kinova_arm_meshes/base_link.STL"
+          url "./kinova_arm_meshes/base_link.obj"
         }
       }
       HingeJoint {
         jointParameters HingeJointParameters {
           axis -0.000000 0.000007 -1.000000
           anchor 0.000000 0.000000 0.156430
+          position %<= fields.mirrorInitialPoseFromPrefix.value && fields.prefix.value === "Left_" ? -fields.joint1Position.value : fields.joint1Position.value; >%
         }
         device [
           RotationalMotor {
@@ -50,18 +64,19 @@ PROTO KinovaGen3 [
           children [
             Shape {
               appearance DEF Shoulder_Link_material PBRAppearance {
-                baseColor 0.752940 0.752940 0.752940
-                roughness 1.000000
-                metalness 0
+                baseColor 0.780000 0.782000 0.790000
+                roughness 0.350000
+                metalness 0.150000
               }
               geometry DEF Shoulder_Link Mesh {
-                url "./kinova_arm_meshes/shoulder_link.STL"
+                url "./kinova_arm_meshes/shoulder_link.obj"
               }
             }
             HingeJoint {
               jointParameters HingeJointParameters {
                 axis -0.000000 -1.000000 -0.000004
                 anchor 0.000000 0.005375 -0.128380
+                position %<= fields.joint2Position.value; >%
               }
               device [
                 RotationalMotor {
@@ -81,18 +96,19 @@ PROTO KinovaGen3 [
                 children [
                   Shape {
                     appearance DEF HalfArm1_Link_material PBRAppearance {
-                      baseColor 0.752940 0.752940 0.752940
-                      roughness 1.000000
-                      metalness 0
+                      baseColor 0.780000 0.782000 0.790000
+                      roughness 0.350000
+                      metalness 0.150000
                     }
                     geometry DEF HalfArm1_Link Mesh {
-                      url "./kinova_arm_meshes/half_arm_1_link.STL"
+                      url "./kinova_arm_meshes/half_arm_1_link.obj"
                     }
                   }
                   HingeJoint {
                     jointParameters HingeJointParameters {
                       axis 0.000000 1.000000 -0.000004
                       anchor 0.000000 -0.210380 -0.006375
+                      position %<= fields.mirrorInitialPoseFromPrefix.value && fields.prefix.value === "Left_" ? -fields.joint3Position.value : fields.joint3Position.value; >%
                     }
                     device [
                       RotationalMotor {
@@ -110,18 +126,19 @@ PROTO KinovaGen3 [
                       children [
                         Shape {
                           appearance DEF HalfArm2_Link_material PBRAppearance {
-                            baseColor 0.752940 0.752940 0.752940
-                            roughness 1.000000
-                            metalness 0
+                            baseColor 0.780000 0.782000 0.790000
+                            roughness 0.350000
+                            metalness 0.150000
                           }
                           geometry DEF HalfArm2_Link Mesh {
-                            url "./kinova_arm_meshes/half_arm_2_link.STL"
+                            url "./kinova_arm_meshes/half_arm_2_link.obj"
                           }
                         }
                         HingeJoint {
                           jointParameters HingeJointParameters {
                             axis -0.000000 -1.000000 -0.000004
                             anchor 0.000000 0.006375 -0.210380
+                            position %<= fields.joint4Position.value; >%
                           }
                           device [
                             RotationalMotor {
@@ -141,18 +158,19 @@ PROTO KinovaGen3 [
                             children [
                               Shape {
                                 appearance DEF ForeArm_Link_material PBRAppearance {
-                                  baseColor 0.752940 0.752940 0.752940
-                                  roughness 1.000000
-                                  metalness 0
+                                  baseColor 0.780000 0.782000 0.790000
+                                  roughness 0.350000
+                                  metalness 0.150000
                                 }
                                 geometry DEF ForeArm_Link Mesh {
-                                  url "./kinova_arm_meshes/forearm_link.STL"
+                                  url "./kinova_arm_meshes/forearm_link.obj"
                                 }
                               }
                               HingeJoint {
                                 jointParameters HingeJointParameters {
                                   axis 0.000000 1.000000 -0.000004
                                   anchor 0.000000 -0.208430 -0.006375
+                                  position %<= fields.mirrorInitialPoseFromPrefix.value && fields.prefix.value === "Left_" ? -fields.joint5Position.value : fields.joint5Position.value; >%
                                 }
                                 device [
                                   RotationalMotor {
@@ -174,18 +192,19 @@ PROTO KinovaGen3 [
                                   children [
                                     Shape {
                                       appearance DEF SphericalWrist1_Link_material PBRAppearance {
-                                        baseColor 0.752940 0.752940 0.752940
-                                        roughness 1.000000
-                                        metalness 0
+                                        baseColor 0.780000 0.782000 0.790000
+                                        roughness 0.350000
+                                        metalness 0.150000
                                       }
                                       geometry DEF SphericalWrist1_Link Mesh {
-                                        url "./kinova_arm_meshes/spherical_wrist_1_link.STL"
+                                        url "./kinova_arm_meshes/spherical_wrist_1_link.obj"
                                       }
                                     }
                                     HingeJoint {
                                       jointParameters HingeJointParameters {
                                         axis -0.000000 -1.000000 -0.000004
                                         anchor 0.000000 0.000175 -0.105930
+                                        position %<= fields.joint6Position.value; >%
                                       }
                                       device [
                                         RotationalMotor {
@@ -205,18 +224,19 @@ PROTO KinovaGen3 [
                                         children [
                                           Shape {
                                             appearance DEF SphericalWrist2_Link_material PBRAppearance {
-                                              baseColor 0.752940 0.752940 0.752940
-                                              roughness 1.000000
-                                              metalness 0
+                                              baseColor 0.780000 0.782000 0.790000
+                                              roughness 0.350000
+                                              metalness 0.150000
                                             }
                                             geometry DEF SphericalWrist2_Link Mesh {
-                                              url "./kinova_arm_meshes/spherical_wrist_2_link.STL"
+                                              url "./kinova_arm_meshes/spherical_wrist_2_link.obj"
                                             }
                                           }
                                           HingeJoint {
                                             jointParameters HingeJointParameters {
                                               axis -0.000000 1.000000 -0.000004
                                               anchor 0.000000 -0.105930 -0.000175
+                                              position %<= fields.joint7Position.value; >%
                                             }
                                             device [
                                               RotationalMotor {
@@ -242,6 +262,10 @@ PROTO KinovaGen3 [
                                                         axis 1 0 0
                                                         minStop IS armsMinPosition
                                                         maxStop IS armsMaxPosition
+                                                        # Damping kills the high-frequency oscillation that
+                                                        # otherwise appears when the slider is commanded
+                                                        # against minStop/maxStop (e.g. setGripperPos(0)).
+                                                        dampingConstant 5.0
                                                       }
                                                       device [
                                                         PositionSensor { name %<= '"' + fields.prefix.value + "Hand_PositionSensor_Right" + '"'; >% }
@@ -258,11 +282,25 @@ PROTO KinovaGen3 [
                                                             appearance USE base_link_material
                                                             geometry DEF basic_finger Box { size 0.01 0.02 0.045 } # Dedo un poco más largo
                                                           }
+                                                          # Visual-only stem bridging this jaw back into the palm housing below. Runs from the
+                                                          # jaw's proximal face (local z +0.0225) to 20 mm INSIDE the palm (+0.0605), so the jaw
+                                                          # still reads as connected at full opening. Its own Shape rather than a USE of the jaw
+                                                          # geometry: Webots' renderer drops a DEF Shape reused under a second parent transform.
+                                                          # Deliberately NOT in boundingObject -- see the palm note below.
+                                                          Pose {
+                                                            translation 0 0 0.0415
+                                                            children [
+                                                              Shape {
+                                                                appearance USE base_link_material
+                                                                geometry Box { size 0.01 0.02 0.038 }
+                                                              }
+                                                            ]
+                                                          }
                                                         ]
                                                         name %<= '"' + fields.prefix.value + "Hand_Finger_Right" + '"'; >%
                                                         contactMaterial "finger_material"
                                                         boundingObject USE basic_finger
-                                                        physics Physics { mass 0.1 }
+                                                        physics Physics { density -1 mass 0.1 }
                                                       }
                                                     }
                                                     # --- DEDO IZQUIERDO ---
@@ -272,6 +310,10 @@ PROTO KinovaGen3 [
                                                         axis -1 0 0
                                                         minStop IS armsMinPosition
                                                         maxStop IS armsMaxPosition
+                                                        # Damping kills the high-frequency oscillation that
+                                                        # otherwise appears when the slider is commanded
+                                                        # against minStop/maxStop (e.g. setGripperPos(0)).
+                                                        dampingConstant 5.0
                                                       }
                                                       device [
                                                         PositionSensor { name %<= '"' + fields.prefix.value + "Hand_PositionSensor_Left" + '"'; >% }
@@ -283,23 +325,62 @@ PROTO KinovaGen3 [
                                                       ]
                                                       endPoint Solid {
                                                         translation -0.005 0 -0.19
-                                                        children [ USE Finger_Shape ]
+                                                        children [
+                                                          USE Finger_Shape
+                                                          # Visual-only stem bridging this jaw back into the palm housing below. Runs from the
+                                                          # jaw's proximal face (local z +0.0225) to 20 mm INSIDE the palm (+0.0605), so the jaw
+                                                          # still reads as connected at full opening. Its own Shape rather than a USE of the jaw
+                                                          # geometry: Webots' renderer drops a DEF Shape reused under a second parent transform.
+                                                          # Deliberately NOT in boundingObject -- see the palm note below.
+                                                          Pose {
+                                                            translation 0 0 0.0415
+                                                            children [
+                                                              Shape {
+                                                                appearance USE base_link_material
+                                                                geometry Box { size 0.01 0.02 0.038 }
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
                                                         name %<= '"' + fields.prefix.value + "Hand_Finger_Left" + '"'; >%
                                                         contactMaterial "finger_material"
                                                         boundingObject USE basic_finger
-                                                        physics Physics { mass 0.1 }
+                                                        physics Physics { density -1 mass 0.1 }
                                                       }
+                                                    }
+                                                  ]
+                                                }
+                                                # ── Palm housing ──────────────────────────────────────────────────────
+                                                # The jaws are two bare SliderJoints 103 mm clear of the wrist: we skipped
+                                                # the Robotiq's parallel linkage on purpose, which left them visibly
+                                                # floating. This box closes that gap. It spans exactly from the bracelet
+                                                # mesh's distal face (z -0.0645, measured off
+                                                # bracelet_with_vision_link.STL) to z -0.1495, 18 mm short of the jaws;
+                                                # the per-jaw stems above cover the rest and slide inside it. Its 108 mm
+                                                # width is set by the jaw travel: at full opening (maxStop 0.0425) a stem
+                                                # centre sits at x ±0.0475, so ±0.054 keeps it housed rather than poking
+                                                # out into space.
+                                                #
+                                                # PURELY COSMETIC: it is not part of Bracelet_Link's boundingObject, so it
+                                                # does not collide. Adding it there would let the palm foul objects on
+                                                # approach and change grasps that currently work.
+                                                Pose {
+                                                  translation 0 0 -0.107
+                                                  children [
+                                                    Shape {
+                                                      appearance USE base_link_material
+                                                      geometry Box { size 0.108 0.045 0.085 }
                                                     }
                                                   ]
                                                 }
                                                 Shape {
                                                   appearance DEF Bracelet_Link_material PBRAppearance {
-                                                    baseColor 0.752940 0.752940 0.752940
-                                                    roughness 1.000000
-                                                    metalness 0
+                                                    baseColor 0.780000 0.782000 0.790000
+                                                    roughness 0.350000
+                                                    metalness 0.150000
                                                   }
                                                   geometry DEF Bracelet_Link Mesh {
-                                                    url "./kinova_arm_meshes/bracelet_with_vision_link.STL"
+                                                    url "./kinova_arm_meshes/bracelet_with_vision_link.obj"
                                                   }
                                                 }
                                               ]
