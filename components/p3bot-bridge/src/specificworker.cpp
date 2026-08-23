@@ -88,6 +88,7 @@ void SpecificWorker::initialize()
     try { gyro_sigma_    = configLoader.get<double>("SensorNoise.GyroSigma"); } catch(...) {}
     try { gyro_bias_     = configLoader.get<double>("SensorNoise.GyroBias"); } catch(...) {}
     try { gyro_scale_    = configLoader.get<double>("SensorNoise.GyroScale"); } catch(...) {}
+    try { acc_sigma_     = configLoader.get<double>("SensorNoise.AccSigma"); } catch(...) {}
     if (sensor_noise_enabled_)
         std::printf("[SensorNoise] ON — wheels: sigma_v=%.5g m/sqrt(s) sigma_w=%.5g rad/sqrt(s) "
                     "scale_v=%+.4f scale_w=%+.4f | gyro: sigma=%.5g rad/sqrt(s) bias=%+.5g rad/s "
@@ -96,6 +97,8 @@ void SpecificWorker::initialize()
                     "consumer sees the corrupted stream, which is the point.\n",
                     wheel_sigma_v_, wheel_sigma_w_, wheel_scale_v_, wheel_scale_w_,
                     gyro_sigma_, gyro_bias_, gyro_scale_);
+    if (sensor_noise_enabled_)
+        std::printf("[SensorNoise] acc: sigma=%.5g m/s^2/sqrt(Hz)\n", acc_sigma_);
 
     try { nominal_gyro_var_ = configLoader.get<double>("IMU.NominalGyroVar"); } catch(...) {}
     try { nominal_acc_var_  = configLoader.get<double>("IMU.NominalAccVar"); } catch(...) {}
@@ -1516,8 +1519,27 @@ void SpecificWorker::update_imu_data(long timestamp)
 
     if (accelerometer != nullptr)
         if (const double *values = accelerometer->getValues(); values != nullptr)
-            data.acc = {(float)values[0], (float)values[1], (float)values[2],
-                        diag_cov(nominal_acc_var_), timestamp, sim_ts, true};
+        {
+            // Proper acceleration, GRAVITY INCLUDED — a real accelerometer reads ~9.81 on the up axis
+            // at rest and Webots models that faithfully. No scale knob here on purpose: an
+            // accelerometer's dominant systematic error is not a scale but a TILT, because a mount
+            // error eps leaks g*sin(eps) into the horizontal axes (0.086 m/s^2 at 0.5 deg, an order
+            // of magnitude above this sensor's own noise). Tilt belongs in the mount geometry, not in
+            // a fake gain, and in simulation it is exactly zero unless the IMU node is tilted.
+            const double dt_step = std::max(1e-3, static_cast<double>(imu_step_period_ms_) * 1e-3);
+            double ax = values[0], ay = values[1], az = values[2];
+            if (sensor_noise_enabled_)
+            {
+                const double s_step = acc_sigma_ / std::sqrt(dt_step);
+                ax += generate_noise(s_step); ay += generate_noise(s_step); az += generate_noise(s_step);
+            }
+            // Same contract as the gyro: the published variance describes the data ACTUALLY SENT, so
+            // a consumer weighting this sample is never handed a covariance that lies.
+            const double acc_var = nominal_acc_var_
+                                 + (sensor_noise_enabled_ ? acc_sigma_ * acc_sigma_ / dt_step : 0.0);
+            data.acc = {(float)ax, (float)ay, (float)az,
+                        diag_cov(acc_var), timestamp, sim_ts, true};
+        }
 
     if (gyroscope != nullptr)
         if (const double *values = gyroscope->getValues(); values != nullptr)

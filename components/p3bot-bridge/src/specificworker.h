@@ -531,6 +531,10 @@ private:
     // channel was never identifiable and any null result from it meant nothing. Leave at 0.0 for
     // any run that is meant to represent a real robot.
     double gyro_scale_             = 0.0;   // fraction: reported = true*(1+s)
+    // Accelerometer noise density, m/s^2/sqrt(Hz). The linear channel had no synthetic error at all
+    // while the gyro and wheels both did, so it was the one sensor whose published covariance could
+    // not be wrong -- and also the one no consumer could weight honestly.
+    double acc_sigma_              = 0.0;
     static double generate_noise(double stddev);
 
     // Nominal per-sample variances, SI units squared, from config. The simulated gyro and encoders are

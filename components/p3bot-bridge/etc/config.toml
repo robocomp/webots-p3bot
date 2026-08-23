@@ -55,7 +55,7 @@ NominalRotVar = 1e-4
 
 [IMU]
 NominalGyroVar = 1e-5
-NominalAccVar = 1e-3
+NominalAccVar = 6.4e-5   # (m/s^2)^2 — AccSigma^2/dt at the 10 ms IMU step.
 
 
 [SensorNoise]
@@ -120,6 +120,13 @@ WheelScaleV = 0.0
 WheelScaleW = 0.0
 GyroSigma = 1.0e-4
 GyroBias = 5.0e-5
+AccSigma = 8.0e-4   # m/s^2/sqrt(Hz) ~ 82 ug/sqrt(Hz), good industrial MEMS.
+                    # Between an ADIS16505 (~3.8e-4) and a consumer BMI088 (~1.7e-3).
+                    # Over the 50 ms between predictions this is 0.18 mm/s of velocity-
+                    # change error, against the wheels 67 mm/s per sample — which is
+                    # why the accelerometer is worth having for dv even though it can
+                    # never give v. No AccScale knob: an accelerometer error is a TILT,
+                    # not a gain, and tilt lives in the mount geometry.
 GyroScale = 0.0
 
 
