@@ -1,3 +1,16 @@
+########################################################################################
+# TOML mirror of etc/config. Both are shipped; pass whichever one you want on the command
+# line. See etc/config for the reasoning behind every value here -- this file carries the
+# same keys with the comments kept short.
+########################################################################################
+
+# Drive DEF HUMAN_* children of a DEF CROWD node (play_room_human.wbt only).
+Humans = false
+# Serve sensor getters from a 10-deep delay queue instead of the freshest frame.
+Delay = false
+# Let the JoystickAdapter subscription drive the base.
+Joystick = true
+
 [Proxies]
 # This property is used by the clients to connect to IceStorm.
 TopicManager = "IceStorm/TopicManager:default -p 9999"
@@ -6,26 +19,119 @@ TopicManager = "IceStorm/TopicManager:default -p 9999"
 FullPoseEstimationPubPrefix = ""
 
 
-
 [Endpoints]
 # Endpoints for subscriptions interfaces
 JoystickAdapterTopic = "tcp -p 0"
 JoystickAdapterPrefix = ""
 
 # Endpoints for implements interfaces
-Camera360RGB = "tcp -p 0"
-CameraRGBDSimple = "tcp -p 0"
-KinovaArm = "tcp -p 0"
-KinovaArm1 = "tcp -p 0"
-Lidar3D = "tcp -p 0"
-OmniRobot = "tcp -p 0"
-
-
+OmniRobot = "tcp -p 10004"   # matches controller/etc/config.toml (Shadow's port, kept fleet-wide)
+KinovaArm = "tcp -p 15005"
+KinovaArm1 = "tcp -p 15006"
+Camera360RGB = "tcp -p 10098"
+Lidar3D = "tcp -p 11988"
+CameraRGBDSimple = "tcp -p 10096"
+Webots2Robocomp = "tcp -p 15010"
+IMU = "tcp -p 15011"
 
 
 [Period]
-Compute = 100
+# Compute is the rate this component steps the simulation, and the sampling rate of the
+# cheap devices that feed the control loop (encoders, accelerometer, gyro, arm sensors).
+Compute = 8
 Emergency = 500
+# Heavy sensors (helios lidar, 360 camera, zed). Clamped up to Compute if set lower.
+Sensors = 32
+
+
+[FullPose]
+# "wheels" = encoder forward kinematics (includes slip); "supervisor" = ground truth.
+VelocitySource = "wheels"
+# ms; the published velocity is the exact mean over this interval, not a one-step sample.
+PublishPeriod = 100
+NominalVelVar = 1e-4
+NominalRotVar = 1e-4
+
+
+[IMU]
+NominalGyroVar = 1e-5
+NominalAccVar = 1e-3
+
+
+[SensorNoise]
+# OFF for P3Bot: the values below were measured on webots-shadow's DIFFERENTIAL base and do
+# not describe a mecanum one. Measure P3Bot's own wheel/gyro ratio over a pivot before
+# enabling -- see etc/config for the procedure.
+# ── REALISTIC SENSOR NOISE (validation scales withdrawn 2026-08-23) ─────────────
+# The injected SCALE errors are back to zero -- their job is done, both tests passed, and leaving
+# them on would give the robot a permanent 3% fault that the calibrator would dutifully correct and
+# that would then look like a real property of the machine.
+#
+# What is left is NOISE, at levels meant to represent a decent real robot: a good industrial MEMS
+# gyro and a distinctly worse mecanum wheel odometry. The asymmetry is the point -- it is why a
+# consumer should prefer the gyro for heading, and room_concept's measured IMU coverage of 99.1%
+# means it already does.
+#
+#   GyroSigma  1.0e-4 rad/sqrt(s)  ~ 0.34 deg/sqrt(hr) ARW. Between a tactical unit (~0.15) and a
+#                                  consumer part like the BMI088 (~2.4e-4). Industrial MEMS class.
+#   GyroBias   5.0e-5 rad/s        ~ 0.003 deg/s = 10 deg/hr, a plausible post-calibration residual
+#                                  offset. Over a 60 s parked spell that is 0.17 deg of drift.
+#   WheelSigmaV 0.015 m/sqrt(s)    2.5x the value measured on webots-shadow's DIFFERENTIAL base
+#   WheelSigmaW 0.030 rad/sqrt(s)  3x that value. A mecanum base turns by scrubbing rollers sideways,
+#                                  which is the regime wheel odometry is worst in.
+#
+# ⚠ THESE ARE ASSUMED, NOT MEASURED ON P3Bot. A covariance that is merely plausible is in some ways
+# worse than none, because it silently reweights every consumer downstream and nothing complains. To
+# measure them properly: drive a fixed trajectory repeatedly against supervisor ground truth and take
+# the variance of the per-sample velocity residual, separately for the straight and turning regimes.
+# Until that is done, treat any precision-weighted result that depends on these as provisional.
+
+# ── ESTIMATOR VALIDATION, 2026-08-23 ────────────────────────────────────────────
+# Injecting a KNOWN error to check whether room_concept's online motion calibration recovers it.
+# This settles a real ambiguity: yesterday its forward-scale parameter converged to 1.00004 with a
+# window-to-window spread wider than its own sigma. That is equally consistent with "there is no
+# forward scale error" and with "this channel is not observable", and no amount of data whose truth
+# is unknown can separate them. A known injected error can.
+#
+# TEST 1 RESULT (2026-08-23, 73 m / 24 episodes, turn-heavy): PASSED. GyroScale = 0.0 was
+# recovered as calib_k_w = 0.96901 against a predicted 1/(1.03 * 1.00262) = 0.96833 -- 0.07% apart,
+# from a cold start, with no ground truth. First 97 deg turn alone took it from 1.0 to 0.9721.
+# calib_k_v ended at 1.00098 (no cross-talk). calib_yaw was NOT identifiable in that run and its
+# sigma correctly WIDENED (0.219 deg vs 0.129 yesterday) because its regressor is forward travel and
+# the run was turns -- "not asked", not "no signal", which is the distinction the sigma exists for.
+#
+# TEST 1 (done): gyro only. Expect room_concept's calib_k_w -> 1/1.03 = 0.9709, and calib_k_v
+# and calib_yaw to stay where they were. If yaw or k_v moves when only the gyro is perturbed, the
+# parameters are cross-talking and the Jacobian is wrong -- a live risk, since exactly that made k_v
+# oscillate until the turn-deweighting fix.
+# TEST 2 (THIS ONE): wheels only. Expect calib_k_v -> 1/1.03 = 0.9709, calib_k_w back to ~0.997
+# (its native value with no injection), calib_yaw back toward -0.54 deg. DRIVE STRAIGHT-HEAVY: k_v's
+# regressor is forward travel, and Test 1 showed that a run without a parameter's regressor leaves it
+# untaught with a widening sigma rather than converged.
+# Then both signs, because a sign error looks like convergence one way and divergence the other.
+#
+# Noise is left at ZERO for these runs on purpose: we are testing whether a BIAS is recoverable, and
+# added noise only widens the posterior without changing the answer. Restore Enabled = false when
+# the validation is done -- these values do not describe P3Bot's real sensors.
+Enabled = true
+WheelSigmaV = 0.015
+WheelSigmaW = 0.030
+WheelScaleV = 0.0
+WheelScaleW = 0.0
+GyroSigma = 1.0e-4
+GyroBias = 5.0e-5
+GyroScale = 0.0
+
+
+[Camera]
+# Build a zed point cloud every sample. The most expensive thing in the loop at 1920x1080.
+ZED.points3D = false
+
+
+
+[Component]
+Debug.Verbose = false
+
 
 [Ice]
 Warn.Connections = "0"

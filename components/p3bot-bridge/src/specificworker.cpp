@@ -16,6 +16,9 @@
  *    You should have received a copy of the GNU General Public License
  *    along with RoboComp.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <limits>
+#include <locale>
+#include <fstream>
 #include "specificworker.h"
 
 #pragma region ROBOCOMP_METHODS
@@ -84,13 +87,15 @@ void SpecificWorker::initialize()
     try { wheel_scale_w_ = configLoader.get<double>("SensorNoise.WheelScaleW"); } catch(...) {}
     try { gyro_sigma_    = configLoader.get<double>("SensorNoise.GyroSigma"); } catch(...) {}
     try { gyro_bias_     = configLoader.get<double>("SensorNoise.GyroBias"); } catch(...) {}
+    try { gyro_scale_    = configLoader.get<double>("SensorNoise.GyroScale"); } catch(...) {}
     if (sensor_noise_enabled_)
         std::printf("[SensorNoise] ON — wheels: sigma_v=%.5g m/sqrt(s) sigma_w=%.5g rad/sqrt(s) "
-                    "scale_v=%+.4f scale_w=%+.4f | gyro: sigma=%.5g rad/sqrt(s) bias=%+.5g rad/s\n"
+                    "scale_v=%+.4f scale_w=%+.4f | gyro: sigma=%.5g rad/sqrt(s) bias=%+.5g rad/s "
+                    "scale=%+.4f\n"
                     "[SensorNoise] ⚠ this bridge is NO LONGER publishing ground truth; every "
                     "consumer sees the corrupted stream, which is the point.\n",
                     wheel_sigma_v_, wheel_sigma_w_, wheel_scale_v_, wheel_scale_w_,
-                    gyro_sigma_, gyro_bias_);
+                    gyro_sigma_, gyro_bias_, gyro_scale_);
 
     try { nominal_gyro_var_ = configLoader.get<double>("IMU.NominalGyroVar"); } catch(...) {}
     try { nominal_acc_var_  = configLoader.get<double>("IMU.NominalAccVar"); } catch(...) {}
@@ -538,6 +543,31 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
     // adv/side/rot/rz mean the same thing on both robots either way; only this term differs.
     const float orientation = static_cast<float>(atan2(orientation_m[1], orientation_m[0]) - M_PI_2);
 
+#if BRIDGE_YAWRATE_DIAG
+    // See the note on BRIDGE_YAWRATE_DIAG in specificworker.h. yaw_raw is UNSHIFTED (no M_PI_2) so
+    // it unwraps cleanly offline; gyro_z is the raw device read, the same value published on the IMU.
+    {
+        static std::ofstream diag_csv("yawrate_diag.csv");
+        static bool hdr = false;
+        if (not hdr)
+        {
+            diag_csv.imbue(std::locale::classic());   // es_ES would emit a comma decimal separator
+            diag_csv << "sim_t,wall_ms,yaw_raw,wz_sup,gyro_z,vx_world,vy_world,sim_wall_rate\n";
+            hdr = true;
+        }
+        const double gz = (gyroscope != nullptr and gyroscope->getValues() != nullptr)
+                        ? gyroscope->getValues()[2] : std::numeric_limits<double>::quiet_NaN();
+        diag_csv << _robot->getTime()
+                 << ',' << timestamp
+                 << ',' << atan2(orientation_m[1], orientation_m[0])
+                 << ',' << velocity[5]
+                 << ',' << gz
+                 << ',' << velocity[0]
+                 << ',' << velocity[1]
+                 << ',' << sim_wall_rate_ << '\n';
+    }
+#endif
+
     // Webots reports velocities per SIMULATION second, and that is what we publish: `simTimestamp`
     // carries the clock they are measured in, so a consumer integrates the true rate over the matching
     // clock and needs no correction. sim_wall_rate_ is still estimated — acquisition_wall_ms() needs
@@ -646,9 +676,19 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
     // Nominal, config-driven. Measuring the simulator's own velocity noise would give ~0, and a zero
     // variance reads downstream as infinite confidence; the real base controller overwrites these once
     // calibrated. Only the velocity block is known, so pose and acceleration say "unknown".
-    pose_data.velCov.m00 = static_cast<float>(nominal_vel_var_);   // vx
-    pose_data.velCov.m11 = static_cast<float>(nominal_vel_var_);   // vy
-    pose_data.velCov.m55 = static_cast<float>(nominal_rot_var_);   // vrz
+    // The published variance must describe the data ACTUALLY SENT. When synthetic wheel noise is on,
+    // these samples carry it, and advertising the clean nominal figure would hand every consumer a
+    // covariance that lies -- so their precisions would all be wrong in the same direction, and a
+    // consumer weighting gyro against wheels would systematically over-trust the wheels. The gyro
+    // path has done this since it was written (nominal + sigma^2/dt); this channel had not, which
+    // made the two sensors' covariances mean different things. dt is the PUBLISH period, the interval
+    // a consumer integrates one sample across.
+    const double dt_cov = std::max(1e-3, fullpose_publish_period_ms * 1e-3);
+    const double vel_extra = sensor_noise_enabled_ ? wheel_sigma_v_ * wheel_sigma_v_ / dt_cov : 0.0;
+    const double rot_extra = sensor_noise_enabled_ ? wheel_sigma_w_ * wheel_sigma_w_ / dt_cov : 0.0;
+    pose_data.velCov.m00 = static_cast<float>(nominal_vel_var_ + vel_extra);   // vx
+    pose_data.velCov.m11 = static_cast<float>(nominal_vel_var_ + vel_extra);   // vy
+    pose_data.velCov.m55 = static_cast<float>(nominal_rot_var_ + rot_extra);   // vrz
     pose_data.poseCov.m00 = -1.f;
     pose_data.accCov.m00  = -1.f;
 
@@ -1491,7 +1531,15 @@ void SpecificWorker::update_imu_data(long timestamp)
             double gz = values[2];
             const double dt_step = std::max(1e-3, static_cast<double>(imu_step_period_ms_) * 1e-3);
             if (sensor_noise_enabled_)
+            {
+                // Scale FIRST, then bias and noise: a scale multiplies the true rate, whereas a bias
+                // and the noise are added to whatever the sensor reports. Applying them in the other
+                // order would scale the bias too and the injected error would not be the one written
+                // in the config -- which matters, because this value is the answer the estimator is
+                // being marked against.
+                gz *= (1.0 + gyro_scale_);
                 gz += gyro_bias_ + generate_noise(gyro_sigma_ / std::sqrt(dt_step));
+            }
             // The published variance must describe the data actually sent: a consumer weighting this
             // by the nominal figure while the samples carry injected noise would be given a covariance
             // that lies, and every downstream precision would be wrong in the same direction.
