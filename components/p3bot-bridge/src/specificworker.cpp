@@ -689,9 +689,12 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
     const double dt_cov = std::max(1e-3, fullpose_publish_period_ms * 1e-3);
     const double vel_extra = sensor_noise_enabled_ ? wheel_sigma_v_ * wheel_sigma_v_ / dt_cov : 0.0;
     const double rot_extra = sensor_noise_enabled_ ? wheel_sigma_w_ * wheel_sigma_w_ / dt_cov : 0.0;
-    pose_data.velCov.m00 = static_cast<float>(nominal_vel_var_ + vel_extra);   // vx
-    pose_data.velCov.m11 = static_cast<float>(nominal_vel_var_ + vel_extra);   // vy
-    pose_data.velCov.m55 = static_cast<float>(nominal_rot_var_ + rot_extra);   // vrz
+    // Same no-zero contract as the IMU block: 0 reads as infinite confidence downstream.
+    const auto safe_var_v = [](double v) -> double
+    { return (v < 0.0) ? -1.0 : std::max(v, 1e-12); };
+    pose_data.velCov.m00 = static_cast<float>(safe_var_v(nominal_vel_var_ + vel_extra));   // vx
+    pose_data.velCov.m11 = static_cast<float>(safe_var_v(nominal_vel_var_ + vel_extra));   // vy
+    pose_data.velCov.m55 = static_cast<float>(safe_var_v(nominal_rot_var_ + rot_extra));   // vrz
     pose_data.poseCov.m00 = -1.f;
     pose_data.accCov.m00  = -1.f;
 
@@ -1510,6 +1513,18 @@ void SpecificWorker::update_imu_data(long timestamp)
     };
     const RoboCompIMU::Cov3 unknown_cov = []{ RoboCompIMU::Cov3 c{}; c.m00 = -1.f; return c; }();
 
+    // ── A PUBLISHED VARIANCE IS NEVER ZERO ────────────────────────────────────────────────────────
+    // Zero variance reads downstream as INFINITE confidence, and a consumer weighting by 1/var then
+    // divides by zero or hands that channel unlimited authority over the estimate -- silently, with
+    // no error anywhere. The contract is therefore: a published variance is either strictly positive
+    // or exactly -1, the "producer does not know" sentinel that every consumer here already tests
+    // for. It must never be 0, whatever a config file says: NominalGyroVar/NominalAccVar/
+    // NominalVelVar are all editable, and "0" is the value someone writes when they mean "perfect".
+    // The floor is one part in 10^12 of the quantity, i.e. numerically negligible but never
+    // degenerate; anything genuinely unknown should be sent as -1 rather than as a tiny number.
+    const auto safe_var = [](double v) -> double
+    { return (v < 0.0) ? -1.0 : std::max(v, 1e-12); };
+
     // Anything this robot does not carry says "unknown" rather than a confident zero.
     data.acc.cov  = unknown_cov;
     data.gyro.cov = unknown_cov;
@@ -1552,8 +1567,8 @@ void SpecificWorker::update_imu_data(long timestamp)
             }
             // Same contract as the gyro: the published variance describes the data ACTUALLY SENT, so
             // a consumer weighting this sample is never handed a covariance that lies.
-            const double acc_var = nominal_acc_var_
-                                 + (sensor_noise_enabled_ ? acc_sigma_ * acc_sigma_ / dt_step : 0.0);
+            const double acc_var = safe_var(nominal_acc_var_
+                                 + (sensor_noise_enabled_ ? acc_sigma_ * acc_sigma_ / dt_step : 0.0));
             data.acc = {(float)ax, (float)ay, (float)az,
                         diag_cov(acc_var), timestamp, sim_ts, true};
         }
@@ -1582,8 +1597,8 @@ void SpecificWorker::update_imu_data(long timestamp)
             // The published variance must describe the data actually sent: a consumer weighting this
             // by the nominal figure while the samples carry injected noise would be given a covariance
             // that lies, and every downstream precision would be wrong in the same direction.
-            const double gyro_var = nominal_gyro_var_
-                                  + (sensor_noise_enabled_ ? gyro_sigma_ * gyro_sigma_ / dt_step : 0.0);
+            const double gyro_var = safe_var(nominal_gyro_var_
+                                  + (sensor_noise_enabled_ ? gyro_sigma_ * gyro_sigma_ / dt_step : 0.0));
             // gz needs no rotation: a rotation about z leaves the z component invariant, which is why
             // heading has been correct all along while the linear axes were not.
             const auto [gx_b, gy_b] = to_body(values[0], values[1]);
