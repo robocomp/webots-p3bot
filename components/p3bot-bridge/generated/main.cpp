@@ -59,6 +59,7 @@
  * ...
  *
  */
+#include <clocale>
 #include <signal.h>
 
 // QT includes
@@ -79,9 +80,11 @@
 
 #include <camera360rgbI.h>
 #include <camerargbdsimpleI.h>
+#include <imuI.h>
 #include <kinovaarmI.h>
 #include <lidar3dI.h>
 #include <omnirobotI.h>
+#include <webots2robocompI.h>
 #include <joystickadapterI.h>
 
 #include <Camera360RGB.h>
@@ -89,10 +92,13 @@
 #include <FullPoseEstimation.h>
 #include <FullPoseEstimationPub.h>
 #include <GenericBase.h>
+#include <Gridder.h>
+#include <IMU.h>
 #include <JoystickAdapter.h>
 #include <KinovaArm.h>
 #include <Lidar3D.h>
 #include <OmniRobot.h>
+#include <Webots2Robocomp.h>
 
 //#define USE_QTGUI
 
@@ -274,6 +280,17 @@ int P3BotBridge::run(int argc, char* argv[])
 	QCoreApplication a(argc, argv);  // NON-GUI application
 #endif
 
+	// The Q*Application constructor above calls setlocale(LC_ALL, "") — it adopts the user's
+	// locale for the C library. On a machine whose locale uses a decimal COMMA (es_ES, fr_FR,
+	// de_DE, ...) that silently breaks numeric I/O: strtof/atof/scanf then stop at the '.' of a
+	// file written with decimal POINTS and return just the integer part, with NO error flag
+	// ("0.626452" -> 0). Meanwhile std::ofstream keeps formatting through the C++ global locale,
+	// which stays "C" and writes POINTS — so a component corrupts its own data on round-trip.
+	// Pin LC_NUMERIC back to "C" so the two agree. Text stays localised: LC_CTYPE / LC_TIME /
+	// LC_MESSAGES keep the user's locale, and Qt's own formatting goes through QLocale, which
+	// this does not touch. Prefer std::from_chars for parsing anyway — it is locale-independent
+	// by definition and cannot regress if someone changes the locale later.
+	std::setlocale(LC_NUMERIC, "C");
 
 	sigset_t sigs;
 	sigemptyset(&sigs);
@@ -333,6 +350,9 @@ int P3BotBridge::run(int argc, char* argv[])
 		implement<CameraRGBDSimpleI>(communicator(),
 		                    configLoader.get<std::string>("Endpoints.CameraRGBDSimple"), 
 		                    "camerargbdsimple", worker,  0);
+		implement<IMUI>(communicator(),
+		                    configLoader.get<std::string>("Endpoints.IMU"), 
+		                    "imu", worker,  0);
 		implement<KinovaArmI>(communicator(),
 		                    configLoader.get<std::string>("Endpoints.KinovaArm"), 
 		                    "kinovaarm", worker,  0);
@@ -345,6 +365,9 @@ int P3BotBridge::run(int argc, char* argv[])
 		implement<OmniRobotI>(communicator(),
 		                    configLoader.get<std::string>("Endpoints.OmniRobot"), 
 		                    "omnirobot", worker,  0);
+		implement<Webots2RobocompI>(communicator(),
+		                    configLoader.get<std::string>("Endpoints.Webots2Robocomp"), 
+		                    "webots2robocomp", worker,  0);
 
 		//Subscribe code
 		subscribe<JoystickAdapterI>(communicator(),

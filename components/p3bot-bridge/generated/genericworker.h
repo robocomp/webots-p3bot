@@ -30,6 +30,7 @@
 #include <QtCore>
 #include <variant>
 #include <unordered_map>
+#include <fps/fps.h>
 
 
 #include <Camera360RGB.h>
@@ -37,10 +38,13 @@
 #include <FullPoseEstimation.h>
 #include <FullPoseEstimationPub.h>
 #include <GenericBase.h>
+#include <Gridder.h>
+#include <IMU.h>
 #include <JoystickAdapter.h>
 #include <KinovaArm.h>
 #include <Lidar3D.h>
 #include <OmniRobot.h>
+#include <Webots2Robocomp.h>
 
 #define BASIC_PERIOD 100
 
@@ -72,6 +76,13 @@ public:
 	virtual RoboCompCameraRGBDSimple::TImage CameraRGBDSimple_getImage(std::string camera) = 0;
 	virtual RoboCompCameraRGBDSimple::TPoints CameraRGBDSimple_getPoints(std::string camera) = 0;
 
+	virtual RoboCompIMU::Acceleration IMU_getAcceleration() = 0;
+	virtual RoboCompIMU::Gyroscope IMU_getAngularVel() = 0;
+	virtual RoboCompIMU::DataImu IMU_getDataImu() = 0;
+	virtual RoboCompIMU::Magnetic IMU_getMagneticFields() = 0;
+	virtual RoboCompIMU::Orientation IMU_getOrientation() = 0;
+	virtual void IMU_resetImu() = 0;
+
 	virtual bool KinovaArm_closeGripper() = 0;
 	virtual RoboCompKinovaArm::TPose KinovaArm_getCenterOfTool(RoboCompKinovaArm::ArmJoints referencedTo) = 0;
 	virtual RoboCompKinovaArm::TGripper KinovaArm_getGripperState() = 0;
@@ -82,6 +93,7 @@ public:
 	virtual void KinovaArm_openGripper() = 0;
 	virtual void KinovaArm_setCenterOfTool(RoboCompKinovaArm::TPose pose, RoboCompKinovaArm::ArmJoints referencedTo) = 0;
 	virtual bool KinovaArm_setGripperPos(float pos) = 0;
+	virtual void KinovaArm_stopArm() = 0;
 
 	virtual bool KinovaArm1_closeGripper() = 0;
 	virtual RoboCompKinovaArm::TPose KinovaArm1_getCenterOfTool(RoboCompKinovaArm::ArmJoints referencedTo) = 0;
@@ -93,6 +105,7 @@ public:
 	virtual void KinovaArm1_openGripper() = 0;
 	virtual void KinovaArm1_setCenterOfTool(RoboCompKinovaArm::TPose pose, RoboCompKinovaArm::ArmJoints referencedTo) = 0;
 	virtual bool KinovaArm1_setGripperPos(float pos) = 0;
+	virtual void KinovaArm1_stopArm() = 0;
 
 	virtual RoboCompLidar3D::TColorCloudData Lidar3D_getColorCloudData() = 0;
 	virtual RoboCompLidar3D::TData Lidar3D_getLidarData(std::string name, float start, float len, int decimationDegreeFactor) = 0;
@@ -110,12 +123,20 @@ public:
 	virtual void OmniRobot_setSpeedBase(float advx, float advz, float rot) = 0;
 	virtual void OmniRobot_stopBase() = 0;
 
+	virtual RoboCompWebots2Robocomp::ObjectPose Webots2Robocomp_getObjectPose(std::string DEF) = 0;
+	virtual void Webots2Robocomp_resetWebots() = 0;
+	virtual void Webots2Robocomp_setArmJointsInstant(RoboCompKinovaArm::TJointAngles angles) = 0;
+	virtual void Webots2Robocomp_setDoorAngle(std::string DEF, float angle) = 0;
+	virtual void Webots2Robocomp_setObjectPose(std::string DEF, RoboCompWebots2Robocomp::ObjectPose pose) = 0;
+	virtual void Webots2Robocomp_setPathToHuman(int humanId, RoboCompGridder::TPath path) = 0;
+
 	virtual void JoystickAdapter_sendData (RoboCompJoystickAdapter::TData data) = 0;
 
 
 protected:
 	std::unordered_map<std::string, std::unique_ptr<GRAFCETStep>> states;
 	ConfigLoader configLoader;
+	FPSCounter fps;
 
 
 
