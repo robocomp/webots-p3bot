@@ -32,7 +32,8 @@ Camera360RGB = "tcp -p 10098"
 Lidar3D = "tcp -p 11988"
 CameraRGBDSimple = "tcp -p 10096"
 Webots2Robocomp = "tcp -p 15010"
-IMU = "tcp -p 15011"
+# 10007: the IMU port every other bridge uses, so IMU consumers need no P3Bot-specific config.
+IMU = "tcp -p 10007"
 
 
 [Period]

@@ -9,16 +9,116 @@ Endpoints.JoystickAdapterTopic = "tcp -p 0"
 Endpoints.JoystickAdapterPrefix = ""
 
 # Endpoints for implements interfaces
-Endpoints.CameraRGBDSimple = "tcp -p 10009"
-Endpoints.Lidar3D = "tcp -p 10008"
-Endpoints.Camera360RGB = "tcp -p 10007"
-Endpoints.KinovaArm1 = "tcp -p 10006"
-Endpoints.KinovaArm = "tcp -p 10005"
-Endpoints.OmniRobot = "tcp -p 10004"
+Endpoints.OmniRobot = "tcp -p 15004"
+Endpoints.KinovaArm = "tcp -p 15005"
+Endpoints.KinovaArm1 = "tcp -p 15006"
+Endpoints.Camera360RGB = "tcp -p 15007"
+Endpoints.Lidar3D = "tcp -p 15008"
+Endpoints.CameraRGBDSimple = "tcp -p 15009"
+Endpoints.Webots2Robocomp = "tcp -p 15010"
+# 10007 deliberately breaks the 150xx block: it is the IMU port EVERY other bridge uses
+# (webots-bridge, robocomp-shadow imu / imu_phidget), so imu_dds's stock etc/config —
+# and any other IMU consumer — works unchanged on P3Bot.
+Endpoints.IMU = "tcp -p 10007"
 
-
-Period.Compute = 5
+# The rate this component calls robot->step() at, and therefore the rate the whole simulation
+# advances: nothing else steps the world. It is also the sampling rate of the cheap devices that feed
+# the control loop -- the wheel encoders, the accelerometer, the gyro and the arm position sensors.
+Period.Compute = 8
 Period.Emergency = 500
+
+# Sampling rate for the heavy sensors (helios lidar, 360 camera, zed). Independent of Period.Compute,
+# so the loop above can be made faster without multiplying point-cloud and image processing cost.
+# Clamped up to Period.Compute if set lower. Defaults to Period.Compute when absent.
+Period.Sensors = 32
+
+# ── Base kinematics ──────────────────────────────────────────────────────────
+# P3Bot is a four-wheel mecanum base and there is no runtime choice to make, so unlike webots-bridge
+# there is no Base.Kinematics key here. The geometry is compiled in from protos/P3Bot.proto:
+#     WHEEL_RADIUS 0.08   LX 0.125   LY 0.240      (src/specificworker.h)
+# If a future world changes the wheel layout, change the proto and those three constants together --
+# the inverse and forward kinematics are built from the same numbers so they cannot drift apart.
+
+# Source of the VELOCITY fields published on FullPoseEstimationPub. The pose fields are supervisor
+# ground truth either way, and OmniRobot is unaffected by this setting.
+#   "wheels"     - wheel-encoder forward kinematics: the exact inverse of the mecanum IK in
+#                  apply_pending_speed_command(), which is what the real base controller computes
+#                  from its own encoders. Includes real wheel slip.
+#   "supervisor" - robotNode->getVelocity() ground truth. Kept for A/B measurement, and fallen back
+#                  to automatically (loudly) if any wheel encoder is missing from the world.
+# MUST be quoted: ConfigLoader throws on a bare word and aborts startup rather than defaulting.
+FullPose.VelocitySource = "wheels"
+
+# Publish period for the wheel-odometry channel, ms. 100 = 10 Hz. The IMU stays at the step rate, and
+# that rate GAP is what a consumer's high-rate injection propagates across. The published velocity is
+# differenced over this whole interval, so it is the exact mean over it, not a sample of one step.
+FullPose.PublishPeriod = 100
+
+# ── Synthetic sensor error ───────────────────────────────────────────────────
+# OFF for P3Bot, deliberately. This bridge publishes the supervisor's GROUND TRUTH, whose velocity
+# noise is some five orders below what any consumer's motion model is configured for -- so in
+# simulation the motion prior does no work, and anything tuned against it is tuned against a robot
+# that does not exist. These knobs exist to fix that, but the figures below are NOT P3Bot's: they were
+# measured on webots-shadow's DIFFERENTIAL base, which turns by scrubbing in a way a mecanum base does
+# not. Switching this on without first measuring P3Bot's own wheel/gyro ratio over a pivot would be
+# injecting one robot's error into another's simulation.
+#
+# TO ENABLE, in this order:
+#   1. drive one pure pivot (>= 180 deg, near-zero net travel) with this still off,
+#   2. integrate the published wheel `rot` and the IMU gyro's z over the same interval,
+#   3. the ratio minus one IS WheelScaleW for this robot -- write the measured number and the date
+#      here, the way webots-bridge's config does, so the next reader knows where it came from.
+#
+# sigma_* are DENSITIES (m/sqrt(s), rad/sqrt(s)): the rate is perturbed by sigma/sqrt(dt) so the
+# accumulated increment has variance sigma^2*dt. One constant therefore means the same thing on the
+# 10 Hz wheel channel and the 125 Hz IMU channel. scale_* are CONSTANT fractional errors held for the
+# whole run (a wheel radius does not change per sample): reported = true * (1 + s).
+#
+# ★ THE WHEELS AND THE GYRO ARE DELIBERATELY DIFFERENT. A gyro does not scrub, so it gets NO scale --
+# only its own noise and a slow bias. That asymmetry is precisely why a gyro heading path is worth
+# having; one shared error model would simulate a gyro that scrubs and argue against a feature that is
+# genuinely valuable on hardware.
+#
+# ⚠ WITH THIS ON THE BRIDGE NO LONGER PUBLISHES GROUND TRUTH, and every consumer sees it -- which is
+# the point, and also why runs with it on are not comparable to runs without. It announces itself at
+# startup as "[SensorNoise] ON".
+SensorNoise.Enabled     = false
+SensorNoise.WheelSigmaV = 0.006   # m/sqrt(s)   encoder velocity noise: ~19 mm/s of jitter at 10 Hz
+SensorNoise.WheelSigmaW = 0.010   # rad/sqrt(s) wheel-derived yaw-rate noise
+SensorNoise.WheelScaleV = 0.0     # no odometer scale error assumed; raise if the real base shows one
+SensorNoise.WheelScaleW = 0.0     # the scrubbing error -- measure it on P3Bot before setting it
+SensorNoise.GyroSigma   = 0.002   # rad/sqrt(s) — 3x quieter than the wheels, and with NO scale
+SensorNoise.GyroBias    = 0.0     # a real gyro drifts; left at 0 until there is a figure to use
+
+# Nominal per-sample variances, SI units squared. The simulated gyro and encoders are EXACT and the
+# accelerometer only quantises at 0.001, so a measured covariance here would be ~0 -- and a zero
+# variance reads downstream as infinite confidence, which wrecks any filter consuming it. So publish
+# plausible real-robot figures instead; the real IMU and base controller overwrite them once
+# calibrated.
+IMU.NominalGyroVar     = 1e-5
+IMU.NominalAccVar      = 1e-3
+FullPose.NominalVelVar = 1e-4
+FullPose.NominalRotVar = 1e-4
+
+# Build a point cloud from the zed range finder on every sample. Off by default: at 1920x1080 it is
+# the most expensive thing in the loop, and CameraRGBDSimple_getPoints returns an empty cloud while it
+# is off rather than a stale one.
+Camera.ZED.points3D = False
+
+# Drive DEF HUMAN_* children of a DEF CROWD node along paths given by Webots2Robocomp_setPathToHuman.
+# Only play_room_human.wbt has such a node; everywhere else this is inert but still costs a
+# getFromDef("CROWD") per cycle, so leave it off.
+Humans = false
+
+# Serve every sensor getter from a 10-deep delay queue instead of the latest sample, to emulate a
+# perception pipeline that lags. Off means "always the freshest frame".
+Delay = false
+
+# Let the JoystickAdapter subscription drive the base. Turn off to keep a joystick connected for
+# telemetry while an autonomous controller owns OmniRobot.
+Joystick = true
+
+Component.Debug.Verbose = false
 
 Ice.Warn.Connections = "0"
 Ice.Trace.Network = "0"
