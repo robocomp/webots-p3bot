@@ -1517,6 +1517,22 @@ void SpecificWorker::update_imu_data(long timestamp)
     data.acc.simTimestamp = data.gyro.simTimestamp = data.mag.simTimestamp = data.rot.simTimestamp = sim_ts;
     data.acc.simulated = data.gyro.simulated = data.mag.simulated = data.rot.simulated = true;
 
+    // ── DEVICE FRAME -> BODY FRAME ────────────────────────────────────────────────────────────────
+    // P3Bot.proto puts GROUP_SENSORS inside `Pose { rotation 0 0 1 1.5707963267948966 }`, the same
+    // wrapper that makes the body +Y-forward. So every sensor's device axes are rotated +90 deg about
+    // z from the body frame, and a Webots device reports in ITS OWN axes. Publishing those raw leaks
+    // a construction detail to every consumer: measured on 2026-08-23, room_concept's accelerometer
+    // integration found acc_x tracking forward motion and acc_y tracking centripetal (corr -0.796),
+    // i.e. exactly this rotation, after the consumer had documented the opposite.
+    //
+    //   v_body = Rz(+90) * v_device   =>   body_x = -dev_y,  body_y = +dev_x,  body_z = dev_z
+    //
+    // Doing it HERE and not in each consumer is the point: the device-to-body relationship is a fact
+    // about how this robot is built, which the bridge owns and no consumer can know. If the proto's
+    // wrapper rotation ever changes, this constant moves with it -- the proto comment already lists
+    // the three things that must move together, and this is now a fourth.
+    const auto to_body = [](double dx, double dy) { return std::pair{-dy, dx}; };
+
     if (accelerometer != nullptr)
         if (const double *values = accelerometer->getValues(); values != nullptr)
         {
@@ -1527,7 +1543,8 @@ void SpecificWorker::update_imu_data(long timestamp)
             // of magnitude above this sensor's own noise). Tilt belongs in the mount geometry, not in
             // a fake gain, and in simulation it is exactly zero unless the IMU node is tilted.
             const double dt_step = std::max(1e-3, static_cast<double>(imu_step_period_ms_) * 1e-3);
-            double ax = values[0], ay = values[1], az = values[2];
+            auto [ax, ay] = to_body(values[0], values[1]);
+            double az = values[2];
             if (sensor_noise_enabled_)
             {
                 const double s_step = acc_sigma_ / std::sqrt(dt_step);
@@ -1567,7 +1584,10 @@ void SpecificWorker::update_imu_data(long timestamp)
             // that lies, and every downstream precision would be wrong in the same direction.
             const double gyro_var = nominal_gyro_var_
                                   + (sensor_noise_enabled_ ? gyro_sigma_ * gyro_sigma_ / dt_step : 0.0);
-            data.gyro = {(float)values[0], (float)values[1], (float)gz,
+            // gz needs no rotation: a rotation about z leaves the z component invariant, which is why
+            // heading has been correct all along while the linear axes were not.
+            const auto [gx_b, gy_b] = to_body(values[0], values[1]);
+            data.gyro = {(float)gx_b, (float)gy_b, (float)gz,
                          diag_cov(gyro_var), timestamp, sim_ts, true};
         }
 
