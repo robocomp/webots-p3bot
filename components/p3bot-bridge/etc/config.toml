@@ -49,7 +49,14 @@ Sensors = 32
 # "wheels" = encoder forward kinematics (includes slip); "supervisor" = ground truth.
 VelocitySource = "wheels"
 # ms; the published velocity is the exact mean over this interval, not a one-step sample.
-PublishPeriod = 100
+# ★MUST BE A MULTIPLE OF Period.Compute (8 ms). The publish fires on the first step at or after the
+# deadline and then re-anchors on the ACTUAL publish time, so a period that is not a multiple is
+# rounded UP every cycle and silently becomes slower than asked: 50 ms lands on the next 8 ms
+# boundary, re-anchors there, and yields a steady 56 ms / 17.9 Hz. 48 ms is exact -> 20.83 Hz.
+# ★The published covariance follows automatically: vel_extra = sigma^2/dt with dt = this period, so
+# halving it doubles the advertised variance, which is correct for the variance of a MEAN over a
+# shorter window. Consumers stay honestly weighted with no second edit.
+PublishPeriod = 48
 NominalVelVar = 1e-4
 NominalRotVar = 1e-4
 

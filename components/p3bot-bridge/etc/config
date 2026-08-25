@@ -52,7 +52,10 @@ FullPose.VelocitySource = "wheels"
 # Publish period for the wheel-odometry channel, ms. 100 = 10 Hz. The IMU stays at the step rate, and
 # that rate GAP is what a consumer's high-rate injection propagates across. The published velocity is
 # differenced over this whole interval, so it is the exact mean over it, not a sample of one step.
-FullPose.PublishPeriod = 100
+# ★MUST BE A MULTIPLE OF Period.Compute (8 ms) -- the publish fires on the first step at or after
+# the deadline and re-anchors on the ACTUAL publish time, so a non-multiple is rounded up every
+# cycle and is silently slower than asked (50 -> 56 ms / 17.9 Hz). 48 ms is exact -> 20.83 Hz.
+FullPose.PublishPeriod = 48
 
 # ── Synthetic sensor error ───────────────────────────────────────────────────
 # OFF for P3Bot, deliberately. This bridge publishes the supervisor's GROUND TRUTH, whose velocity
