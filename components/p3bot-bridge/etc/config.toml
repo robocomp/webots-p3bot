@@ -56,7 +56,7 @@ VelocitySource = "wheels"
 # ★The published covariance follows automatically: vel_extra = sigma^2/dt with dt = this period, so
 # halving it doubles the advertised variance, which is correct for the variance of a MEAN over a
 # shorter window. Consumers stay honestly weighted with no second edit.
-PublishPeriod = 48
+PublishPeriod = 16 
 NominalVelVar = 1e-4
 NominalRotVar = 1e-4
 
