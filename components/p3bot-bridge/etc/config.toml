@@ -123,6 +123,17 @@ NominalAccVar = 6.4e-5   # (m/s^2)^2 — AccSigma^2/dt at the 10 ms IMU step.
 # the validation is done -- these values do not describe P3Bot's real sensors.
 Enabled = true
 WheelSigmaV = 0.015
+# ★ WheelSigmaV/W are now SLIP COEFFICIENTS per unit speed, not flat densities (2026-08-26), and the
+# floors below are what a standstill actually reports. An encoder COUNTS: over an interval the count
+# difference is an integer, and a wheel that is not turning gives exactly zero. It is not a noisy
+# reading of zero — it is the absence of counts. The flat model injected 0.118 m/s into a parked
+# robot and the localiser dutifully integrated it, random-walking 210 mm over 3963 cycles with
+# ground truth motionless. What genuinely scales with speed is slip and timing (a timing error dt_e
+# becomes a velocity error v*dt_e/dt); quantisation leaves only a small floor.
+#     sigma(v) = hypot(floor, k_slip*|v|)
+# At 0.25 m/s this reproduces roughly the old level; at rest it is ~200x quieter.
+WheelSigmaVFloor = 0.0005   # m/sqrt(s)   — sub-count residual at standstill
+WheelSigmaWFloor = 0.0010   # rad/sqrt(s) — same for yaw
 WheelSigmaW = 0.030
 WheelScaleV = 0.0
 WheelScaleW = 0.0

@@ -82,6 +82,8 @@ void SpecificWorker::initialize()
     // ── Synthetic sensor error — see the header for why the two channels differ ──
     try { sensor_noise_enabled_ = configLoader.get<bool>("SensorNoise.Enabled"); } catch(...) {}
     try { wheel_sigma_v_ = configLoader.get<double>("SensorNoise.WheelSigmaV"); } catch(...) {}
+    try { wheel_sigma_v_floor_ = configLoader.get<double>("SensorNoise.WheelSigmaVFloor"); } catch(...) {}
+    try { wheel_sigma_w_floor_ = configLoader.get<double>("SensorNoise.WheelSigmaWFloor"); } catch(...) {}
     try { wheel_sigma_w_ = configLoader.get<double>("SensorNoise.WheelSigmaW"); } catch(...) {}
     try { wheel_scale_v_ = configLoader.get<double>("SensorNoise.WheelScaleV"); } catch(...) {}
     try { wheel_scale_w_ = configLoader.get<double>("SensorNoise.WheelScaleW"); } catch(...) {}
@@ -633,12 +635,34 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
     {
         const double dt_pub = std::max(1e-3, fullpose_publish_period_ms * 1e-3);
         const double inv_sqrt_dt = 1.0 / std::sqrt(dt_pub);
+        // ── WHEEL NOISE IS SPEED-DEPENDENT, and at zero it is essentially zero ────────────────────
+        // A flat density was physically wrong at the one operating point that matters most. An
+        // encoder does not measure velocity, it COUNTS: over an interval the count difference is an
+        // integer, and when the wheel is not turning that difference is exactly zero. A stationary
+        // wheel therefore reports zero speed with near-certainty — it is not a noisy reading of zero,
+        // it is the absence of counts. The flat model injected 0.118 m/s into a robot that was
+        // demonstrably parked, and the consumer, having no way to know better, integrated it: the
+        // localiser's pose random-walked 210 mm over 3963 cycles with ground truth motionless.
+        //
+        // What actually scales with speed is slip and timing. A timing error dt_e turns into a
+        // velocity error v*dt_e/dt, and slip is a fraction of the distance travelled — both
+        // proportional to v. Quantisation contributes a small floor from the sub-count residual.
+        //     sigma(v) = sqrt(sigma_floor^2 + (k_slip * |v|)^2)
+        // ★ THE CONSUMER NEEDS NO EDIT. velCov below is built from this same sigma, and room_concept
+        // already converts a stated variance into a density (OdomVarianceInjection). That channel was
+        // written and documented as "wired but inert, because the producer publishes one nominal
+        // constant". This is what makes it informative: a variance that actually VARIES.
+        const auto sigma_at = [&](double sigma_floor, double k_slip, double v)
+        { return std::hypot(sigma_floor, k_slip * v); };
+        wheel_sigma_v_eff_ = sigma_at(wheel_sigma_v_floor_, wheel_sigma_v_,
+                                      std::hypot(velocity_local.x(), velocity_local.y()));
+        wheel_sigma_w_eff_ = sigma_at(wheel_sigma_w_floor_, wheel_sigma_w_, std::abs(rot_velocity));
         velocity_local.x() = static_cast<float>(velocity_local.x() * (1.0 + wheel_scale_v_)
-                                                + generate_noise(wheel_sigma_v_ * inv_sqrt_dt));
+                                                + generate_noise(wheel_sigma_v_eff_ * inv_sqrt_dt));
         velocity_local.y() = static_cast<float>(velocity_local.y() * (1.0 + wheel_scale_v_)
-                                                + generate_noise(wheel_sigma_v_ * inv_sqrt_dt));
+                                                + generate_noise(wheel_sigma_v_eff_ * inv_sqrt_dt));
         rot_velocity = rot_velocity * (1.0 + wheel_scale_w_)
-                     + generate_noise(wheel_sigma_w_ * inv_sqrt_dt);
+                     + generate_noise(wheel_sigma_w_eff_ * inv_sqrt_dt);
     }
 
     RoboCompFullPoseEstimation::FullPoseEuler pose_data{};
@@ -687,8 +711,14 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
     // made the two sensors' covariances mean different things. dt is the PUBLISH period, the interval
     // a consumer integrates one sample across.
     const double dt_cov = std::max(1e-3, fullpose_publish_period_ms * 1e-3);
-    const double vel_extra = sensor_noise_enabled_ ? wheel_sigma_v_ * wheel_sigma_v_ / dt_cov : 0.0;
-    const double rot_extra = sensor_noise_enabled_ ? wheel_sigma_w_ * wheel_sigma_w_ / dt_cov : 0.0;
+    // The variance advertised is the one ACTUALLY used for this sample, so velCov now varies with
+    // speed exactly as the noise does. A consumer converting it back with sqrt(var*dt_sample)
+    // recovers sigma(v), which is the whole point: at rest it recovers ~0 and there is nothing to
+    // integrate; at speed it recovers the slip term and the prior loosens where it should.
+    const double vel_extra = sensor_noise_enabled_
+                           ? wheel_sigma_v_eff_ * wheel_sigma_v_eff_ / dt_cov : 0.0;
+    const double rot_extra = sensor_noise_enabled_
+                           ? wheel_sigma_w_eff_ * wheel_sigma_w_eff_ / dt_cov : 0.0;
     // Same no-zero contract as the IMU block: 0 reads as infinite confidence downstream.
     const auto safe_var_v = [](double v) -> double
     { return (v < 0.0) ? -1.0 : std::max(v, 1e-12); };

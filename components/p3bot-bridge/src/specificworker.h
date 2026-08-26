@@ -517,8 +517,17 @@ private:
     // thing on the 10 Hz wheel channel and the ~125 Hz IMU channel.
     // ⚠ All zero (the default for P3Bot) is inert and the bridge publishes ground truth exactly.
     bool   sensor_noise_enabled_   = false;
-    double wheel_sigma_v_          = 0.0;   // m/sqrt(s)   — encoder velocity noise density
-    double wheel_sigma_w_          = 0.0;   // rad/sqrt(s) — wheel-derived yaw-rate noise density
+    // ── Wheel noise: a FLOOR plus a term proportional to speed ───────────────────────────────────
+    // wheel_sigma_v_/w_ are now the SLIP coefficients (per unit speed), not flat densities: an
+    // encoder that counts nothing is not making a noisy measurement of zero, it is reporting that
+    // the wheel did not turn. The floors carry the sub-count residual and are deliberately small.
+    //     sigma(v) = hypot(floor, k_slip * |v|)
+    double wheel_sigma_v_          = 0.0;   // slip coefficient, m/sqrt(s) per (m/s)
+    double wheel_sigma_w_          = 0.0;   // slip coefficient, rad/sqrt(s) per (rad/s)
+    double wheel_sigma_v_floor_    = 0.0;   // m/sqrt(s)   — sub-count residual at standstill
+    double wheel_sigma_w_floor_    = 0.0;   // rad/sqrt(s) — same, yaw
+    double wheel_sigma_v_eff_      = 0.0;   // what this sample actually used, injected AND advertised
+    double wheel_sigma_w_eff_      = 0.0;
     double wheel_scale_v_          = 0.0;   // fraction: reported = true*(1+s), constant for the run
     double wheel_scale_w_          = 0.0;   // fraction — the scrubbing error
     double gyro_sigma_             = 0.0;   // rad/sqrt(s) — gyro noise density, INDEPENDENT of wheels
