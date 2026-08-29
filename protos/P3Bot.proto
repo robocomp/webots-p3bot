@@ -165,30 +165,67 @@ PROTO P3Bot [
     }
     Lidar {
       translation -0.0535264 0.00230873 1.24
-      # NO YAW (was 0.34 rad). A 360 deg lidar gains nothing from one -- it only moves which
-      # azimuth ray 0 points at -- but it MUST then be mirrored exactly in the graph's body->helios
-      # RT, and any disagreement rotates the whole cloud and therefore the fitted room. Measured
-      # 2026-08-22: a persistent ~0.35 rad (20 deg) error between Webots truth and the published
-      # robot->room, with the SDF residual at 0.009 -- an excellent fit to a cloud that was itself
-      # turned. Removing the yaw removes the quantity rather than compensating it, so there is
-      # nothing left to apply twice, apply once, or drop.
-      # `tiltAngle` below is untouched: that is a real elevation tilt, not this.
-      # ⚠ DELIBERATE MISMATCH WITH THE GRAPH -- this is a CALIBRATION, not geometry.
-      # p3bot.json's body->helios carries only the +90 deg body-frame wrapper (rz = pi/2) and does
-      # NOT mirror this yaw, so the difference rotates the cloud by exactly -DELTA and cancels the
-      # residual offset measured 2026-08-22 (Webots truth 0.00 -> published robot->room 1.93, i.e.
-      # 110.6 deg where only multiples of 90 are legal: a 20.6 deg excess).
-      # A yaw mirrored on BOTH sides cancels itself and changes nothing -- that was measured too
-      # (0.34/0.34 and 0/0 both left the same ~20 deg excess). So this only works while the two
-      # disagree, which is fragile: if anyone mirrors it into p3bot.json the offset comes straight
-      # back. The real fix is to find why the mount is not reaching the cloud transform.
-      rotation 0 0 1 0.3600
+      # ── THE ~20 DEG EXCESS IS FOUND. IT WAS `tiltAngle`, AND BOTH LINES BELOW GO WITH IT ────
+      # ★★★2026-08-29: this node carried `rotation 0 0 1 0.3600` (20.6 deg) as a deliberate,
+      # documented CALIBRATION -- an unmirrored counter-yaw cancelling "a persistent ~0.35 rad
+      # (20 deg) error between Webots truth and the published robot->room" measured 2026-08-22.
+      # The note ended "the real fix is to find why the mount is not reaching the cloud transform".
+      # It was never the mount. `tiltAngle` ROTATES THE SWEEP IN AZIMUTH.
+      #
+      # MEASURED on Shadow, which carries the same H32F70 and a bpearl with tiltAngle 0 to compare
+      # against, same room, same instant: the helios footprint sits +19.5 deg around from the
+      # bpearl's, and cross-correlating them puts the best alignment at -19.5 deg (mean|diff|
+      # 0.655 m, against 1.447 m at zero shift). Declared tiltAngle -0.34 rad = -19.48 deg. The
+      # Lidar reference calls tiltAngle "rotation around the x-axis of the Lidar node", which for a
+      # lidar whose spin axis is its own x IS an azimuth rotation.
+      #
+      # ★THIS EXPLAINS THE OBSERVATION THAT MADE NO SENSE: mirroring the yaw on both sides
+      # (0.34/0.34) and removing it from both (0/0) BOTH left the same ~20 deg. Of course they did
+      # -- the rotation was never coming from the mount pair, so nothing done to the mount pair
+      # could touch it. Only an UNMIRRORED yaw could cancel it, which is why the calibration
+      # "worked" and why the note called it fragile.
+      #
+      # So both quantities go: tiltAngle to 0 (it buys nothing -- the elevation fan is symmetric
+      # about the device horizon whatever it says) and this counter-yaw with it, because with the
+      # thing it cancelled gone it would BE the 20.6 deg error. Removing the quantity beats
+      # compensating it, exactly as the note above wanted.
+      # ⚠They must move TOGETHER. Setting tiltAngle 0 while leaving rotation 0.36 rotates every
+      # cloud by 20.6 deg, and the SDF will fit it beautifully -- residual 0.009 on a turned room
+      # is what started this.
+      rotation 0 0 1 0
       name "helios"
-      tiltAngle -0.34
+      # ── THE SENSOR IS AN RS-Helios H32F70, AND THE SPAN BELOW MUST SAY SO ────────────────────
+      # ★★★2026-08-27: verticalFieldOfView was pi (180 deg) with 82 layers. That is not a Helios,
+      # and it is not conservative — it is a sensor that can see STRAIGHT DOWN, so every near-field
+      # behaviour validated in this world was validated against visibility the real robot does not
+      # have. The H32F70 spans -55..+15 deg: 70 deg of vertical FOV in 32 beams, centred at -20.
+      #
+      # ★TWO OF THE THREE NUMBERS WERE ALREADY RIGHT, WHICH IS WHY THIS IS A THREE-TOKEN CHANGE:
+      #   angular resolution  sim 180/82 = 2.20 deg/layer   vs real 70/32 = 2.19   -> already right
+      #   tilt                tiltAngle -0.34 = -19.5 deg   vs the -20 centre      -> WRONG: see
+      #                       the block above. tiltAngle does not tilt the fan at all, it rotates
+      #                       the sweep. The elevation centre is 0, not -20, and this line was the
+      #                       assumption that hid a 20.6 deg yaw for a week.
+      #   span                180 deg                       vs 70                  -> WRONG, fixed here
+      # So the only beams being removed are the ones below -55 deg, which the real unit does not
+      # have — and those are exactly the beams that see low objects at close range.
+      #
+      # ★WHAT THIS COSTS, AND IT IS MEANT TO. With the sensor at 1.27 m above the floor, a target of
+      # height h is invisible inside r = (1.27 - h)/tan(55 deg):
+      #     h = 0.25 m -> 0.71 m      h = 0.45 m -> 0.57 m      h = 0.75 m -> 0.36 m
+      # Low boxes will now VANISH from the live cloud on the final approach, as they do on the real
+      # robot. Against a body that reaches 0.412 m with its margin, that leaves a ~0.16 m ring where
+      # the obstacle is genuinely unobservable and only a MAP with memory still knows it is there.
+      # The instantaneous ESDF cannot be fixed for that ring by any filter setting; it has to stop
+      # reporting unobserved space as free. Discovered because the robot drove into boxes that
+      # residual_concept's map held at 0.374 m while the live field never saw closer than 0.621 m.
+      # ⚠Do not "fix" a near-field regression by widening this back out. That hides the defect in
+      # the one place it is cheap to reproduce.
+      tiltAngle 0                        # was -0.34: it SPUN THE SWEEP 19.5 deg, see above
       horizontalResolution 900
       fieldOfView 6.28
-      verticalFieldOfView 3.141592653589793
-      numberOfLayers 82
+      verticalFieldOfView 1.2217304764   # 70 deg (H32F70). Was pi. With tilt -0.34: -54.5..+15.5
+      numberOfLayers 32                  # was 82
       maxRange 8
       noise 0.005
       defaultFrequency 20
