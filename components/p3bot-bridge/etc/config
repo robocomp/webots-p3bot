@@ -127,3 +127,14 @@ Ice.Warn.Connections = "0"
 Ice.Trace.Network = "0"
 Ice.Trace.Protocol = "0"
 Ice.MessageSizeMax = "20004800"
+
+# ---------------------------------------------------------------------------------------------
+# LIDAR CHANNEL WINDOW — which of the layers Webots generates the real device actually has.
+# Webots spreads numberOfLayers SYMMETRICALLY about the device horizon and IGNORES tiltAngle
+# (measured 2026-08-29: tiltAngle rotates the SWEEP in azimuth, 19.5 deg). An RS-Helios H32F70 is
+# not symmetric — 32 channels over -55..+15 deg — so P3Bot.proto generates a symmetric 110 deg fan
+# with 50 layers, which CONTAINS every real channel elevation, and this window drops the 18 above
+# +15 that the unit does not have. Elevations are DEVICE frame, + is up; the mount lives in the RT
+# edge. Delete both keys to publish every layer.
+LidarChannels.helios.ElevMinDeg = -55.0
+LidarChannels.helios.ElevMaxDeg = 15.0

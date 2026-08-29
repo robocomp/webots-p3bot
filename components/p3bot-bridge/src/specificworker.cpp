@@ -20,6 +20,7 @@
 #include <locale>
 #include <fstream>
 #include "specificworker.h"
+#include <set>
 
 #pragma region ROBOCOMP_METHODS
 
@@ -273,26 +274,52 @@ void SpecificWorker::initialize()
     // Applied once, and only to arms that exist. Two different right-arm homes, picked by whether
     // this world has a left arm at all:
     //
-    //  * P3BOT_HOME_R/L — the folded-in rest pose the two-armed P3Bot ships with. How far the arms
-    //    actually travel on connect depends on the world: play_room.wbt spawns at the KinovaGen3
-    //    proto's joint*Position defaults, while WAF.wbt deliberately spawns both arms straight (all
-    //    joints 0) and they fold in over ~2.8 s once the bridge attaches. That travel time is real —
-    //    a client that issues moveJointsWithSpeed inside that window switches the motors to velocity
-    //    mode and leaves the arm half-homed.
+    //  * P3BOT_HOME_R/L — arms at rest along the body, hands laid on the wheel covers. Both
+    //    upper arms hang all but vertically from the shoulders (2.5° and 1.6° off plumb, elbows at
+    //    z 0.51 m); each forearm then swings ~43° back and inboard, and the wrist turns the hand
+    //    through 90° so the gripper points straight FORWARD, palm down, resting on the fender over
+    //    the wheels. Numbers, in the proto's own body frame (+x forward, +y left, +z up, i.e. the
+    //    frame INSIDE P3Bot.proto's +90° wrapper): tool axis (1, 0, 0) to within 0.15°, jaw line
+    //    horizontal across the robot, bracelet at (−0.070, ±0.235, 0.2775) m to within 1.1 mm.
+    //    The fender deck under the hands tops out at z 0.251 m, and the lowest corner of each
+    //    gripper sits at 0.254 m — 3 mm of air, so the hands read as resting without the meshes
+    //    interpenetrating (there is no self-collision here anyway: Robot.selfCollision is FALSE).
+    //    Closest approach to p3bot_body.obj is 6 mm, at the palm's inboard-front corner where the
+    //    pedestal shoulder rises out of the deck at |y| 0.17. The arms stay inside the chassis
+    //    front-to-back (x −0.176..+0.143 against a base of ±0.226) but reach |y| 0.321 at the
+    //    elbows — 27 mm wider per side than the 0.294 m body half-width. That is the shoulder
+    //    MOUNTS talking: they already sit at |y| 0.310, so no hanging pose is narrower. Anything
+    //    that plans on the body footprint (see robot-body-from-mesh) does not know about it.
     //
-    //    The LEFT values are the canonical pose. The RIGHT ones are NOT that pose with joints 1, 3
-    //    and 5 negated, and deliberately so. That sign flip is what the proto does for its spawn
-    //    pose (`mirrorInitialPoseFromPrefix`), and it is only an approximation: it reproduces the
-    //    mirrored tool ORIENTATION exactly but leaves the tool centre ~48 mm off and the jaw line
-    //    rolled 10°, because the Gen3's own 5–6 mm link offsets are not mirror-symmetric, so no
-    //    sign pattern can mirror the chain exactly. The right-arm angles below are instead the
-    //    numeric IK solution for the true reflection of the left arm through the robot's sagittal
-    //    plane — every joint origin, the tool centre and the jaw line matched in one least-squares
-    //    fit. That lands the tool centre within 1.5 mm and the jaw within 0.02°, with a residual
-    //    ~15 mm at the elbow that cannot be removed from joint angles alone: 5 mm of it is the arm
-    //    MOUNTS themselves not being exact mirrors in P3Bot.proto (right at y −0.0518, left at
-    //    +0.055, and x 0 vs 0.002), the rest is the un-mirrorable link offsets. If the two homes
-    //    are ever retuned, re-solve — do not hand-flip signs.
+    //    Three geometric facts pin this pose down, and re-deriving it means honouring all three:
+    //      · the shoulder sits 0.677 m above the deck while shoulder→wrist→tool is 0.779 m, so the
+    //        arm MUST fold by ~30° in total; a perfectly straight hanging arm would drive the hand
+    //        through the fender.
+    //      · Actuator6 is the binding constraint, not reach. With the upper arm plumb, the forearm
+    //        takes the whole fold, and turning the tool from a 43°-back forearm to dead-ahead needs
+    //        a wrist pitch of 2.2296 rad against a 2.23 stop. Both homes therefore sit 2 mrad off
+    //        that stop, deliberately. Trading it away costs either a 32° backward lean of the upper
+    //        arm (elbow out past the chassis rear) or an elbow flared to |y| 0.39.
+    //      · the hands cannot move inboard: the palm housing is 108 mm wide and the flat of the
+    //        deck only spans |y| 0.18..0.24 before the pedestal climbs to z 0.30+.
+    //
+    //    How far the arms actually travel on connect depends on the world: play_room.wbt spawns at
+    //    the KinovaGen3 proto's joint*Position defaults, while WAF.wbt deliberately spawns both
+    //    arms straight (all joints 0) and they fold in over ~2.8 s once the bridge attaches. That
+    //    travel time is real — a client that issues moveJointsWithSpeed inside that window switches
+    //    the motors to velocity mode and leaves the arm half-homed.
+    //
+    //    The two sides are NOT sign flips of each other, and deliberately so. That flip is what the
+    //    proto does for its spawn pose (`mirrorInitialPoseFromPrefix`), and it is only an
+    //    approximation: the Gen3's own 5–6 mm link offsets are not mirror-symmetric, and neither
+    //    are the two mounts in P3Bot.proto (right at y −0.0518, left at +0.055, and x 0 vs 0.002).
+    //    Each side below was solved on its own against the mirrored Cartesian target, which lands
+    //    the joint origins within 6 mm of each other's reflection. If this pose is ever retuned,
+    //    RE-SOLVE both — do not hand-flip signs.
+    //
+    //    The previous folded-in home, kept here in case it is wanted back:
+    //      R{ 0.7938f, -2.0612f,  1.1979f, -2.2098f, -0.2507f, -1.1446f, 1.7015f}
+    //      L{-0.698f,  -2.0944f, -1.047f,  -2.2689f,  0.3491f, -1.1345f, 1.4835f}
     //
     //  * ARM_TABLE_HOME_R — the rest pose for the stand-alone arm-on-desk world (arm_table.wbt),
     //    where there is no left arm and the arm base sits upright on the desk instead of on a torso.
@@ -301,8 +328,8 @@ void SpecificWorker::initialize()
     //    tool_frame at (+0.41, −0.025, +0.33) m in the arm-base frame, approach ≈(0, 0, −1) — plenty
     //    of clearance above the desk for the EFE-gradient controller to take over. Sending the P3Bot
     //    home there instead would drive the arm through the torso.
-    const RoboCompKinovaArm::Angles P3BOT_HOME_R{ 0.7938f, -2.0612f, 1.1979f, -2.2098f, -0.2507f, -1.1446f, 1.7015f};
-    const RoboCompKinovaArm::Angles P3BOT_HOME_L{-0.698f, -2.0944f, -1.047f, -2.2689f,  0.3491f, -1.1345f, 1.4835f};
+    const RoboCompKinovaArm::Angles P3BOT_HOME_R{-1.5985f, -1.1188f, -2.0034f,  0.7738f, -2.5660f,  2.2280f, -1.1933f};
+    const RoboCompKinovaArm::Angles P3BOT_HOME_L{-1.5503f,  1.1393f,  1.9669f, -0.7492f,  2.6203f, -2.2280f, -1.9245f};
     const RoboCompKinovaArm::Angles ARM_TABLE_HOME_R{0.0f, 0.3f, 0.0f, 1.5f, 0.0f, 1.4f, 0.0f};
 
     if (have_arm_r)
@@ -845,10 +872,19 @@ void SpecificWorker::receiving_lidarData(const std::string &name, webots::Lidar*
     const int    verticalResolution   = _lidar->getNumberOfLayers();
     const double fov                  = _lidar->getFov();
     const double angleResolution      = fov / horizontalResolution;
-    // The helios in P3Bot.proto declares verticalFieldOfView π but is mounted with tiltAngle −0.34, so
-    // the usable band is narrower than the declared one; 2.8 is the figure the layer geometry below is
-    // written against, exactly as in webots-bridge.
-    const double verticalFov = name == "helios" ? 2.8 : _lidar->getVerticalFov();
+    // ── BEAM GEOMETRY COMES FROM THE DEVICE ─────────────────────────────────────────────────
+    // Was: `name == "helios" ? 2.8 : getVerticalFov()`, copied from webots-bridge along with the
+    // belief that tiltAngle narrows the usable band. Both were wrong, and both were MEASURED wrong
+    // on Shadow (webots-bridge f153134, 2026-08-29):
+    //   * the 2.8 rad override spreads the proto's layers over a fake 160.4 deg span. Against 32
+    //     layers that is 5.01 deg/layer where the truth is 2.19; the reconstructed cloud then put
+    //     27% of its points outside the building and could not be fitted.
+    //   * tiltAngle does not tilt the fan at all — it ROTATES THE SWEEP IN AZIMUTH. On P3Bot that
+    //     19.5 deg was being cancelled by an unmirrored counter-yaw in the proto
+    //     (`rotation 0 0 1 0.36`), documented there as a calibration for a "~20 deg excess" nobody
+    //     could explain. Both are 0 now (webots-p3bot a688938) and must stay together.
+    // The fan is symmetric about the device's own horizon; the mount lives in the RT edge.
+    const double verticalFov = _lidar->getVerticalFov();
 
     RoboCompLidar3D::TData newLidar3dData{};
 
@@ -873,12 +909,54 @@ void SpecificWorker::receiving_lidarData(const std::string &name, webots::Lidar*
         const float a = static_cast<float>(M_PI - i * angleResolution - fov / 2.0);
         h_angle[i] = a; h_cos[i] = std::cos(a); h_sin[i] = std::sin(a);
     }
+    // N-1 GAPS, not N: the Lidar reference defines verticalFieldOfView as "the angle between FIRST
+    // and LAST layer", so the extreme layers sit exactly at +-vfov/2. j = 0 is the TOP beam
+    // ("ordered ... from the TOP to the BOTTOM layer").
     std::vector<float> v_angle(verticalResolution), v_cos(verticalResolution), v_sin(verticalResolution);
+    const double v_step = (verticalResolution > 1) ? verticalFov / (verticalResolution - 1) : 0.0;
     for (int j = 0; j < verticalResolution; ++j)
     {
-        const float a = static_cast<float>(M_PI + j * (verticalFov / verticalResolution) - verticalFov / 2.0);
+        const float a = static_cast<float>(M_PI - verticalFov / 2.0 + j * v_step);
         v_angle[j] = a; v_cos[j] = std::cos(a); v_sin[j] = std::sin(a);
     }
+
+    // Which of the layers Webots generates does the real device actually have? An RS-Helios H32F70
+    // carries 32 channels spanning -55..+15 deg, and Webots can only spread layers SYMMETRICALLY,
+    // so the proto generates a wide symmetric fan that CONTAINS those elevations and this window
+    // drops the rest. Applied to elevations reconstructed from the device's own FOV, so a dropped
+    // layer changes nothing about the layers that remain — unlike the hardcoded theta band this
+    // replaces, which carved a fabricated fan and so moved every point it kept.
+    // Absent config => no window => every layer is published. The 1e-6 slack keeps a window edge
+    // set to exactly the extreme channel (-55) from losing it to floating point.
+    static std::map<std::string, std::pair<double,double>> win_cache;
+    if (not win_cache.contains(name))
+    {
+        double lo = -1e9, hi = 1e9; bool set = false;
+        try { lo = configLoader.get<double>("LidarChannels." + name + ".ElevMinDeg"); set = true; } catch(...) {}
+        try { hi = configLoader.get<double>("LidarChannels." + name + ".ElevMaxDeg"); set = true; } catch(...) {}
+        win_cache[name] = {lo, hi};
+        if (set)
+            std::cout << "[Lidar] " << name << ": channel window [" << lo << ", " << hi
+                      << "] deg — layers outside it are channels the real device does not have"
+                      << std::endl;
+    }
+    const auto [win_lo, win_hi] = win_cache[name];
+    std::vector<char> layer_kept(verticalResolution, 1);
+    int kept_layers = 0;
+    for (int j = 0; j < verticalResolution; ++j)
+    {
+        const double elev_deg = -(v_angle[j] - M_PI) * 180.0 / M_PI;   // + is UP, device frame
+        layer_kept[j] = (elev_deg >= win_lo - 1e-6 and elev_deg <= win_hi + 1e-6) ? 1 : 0;
+        kept_layers += layer_kept[j];
+    }
+    static std::set<std::string> announced;
+    if (announced.insert(name).second)
+        std::cout << "[Lidar] " << name << ": layers=" << verticalResolution
+                  << " vfov=" << verticalFov * 180.0 / M_PI << " deg step=" << v_step * 180.0 / M_PI
+                  << " deg -> device-frame elevation span ["
+                  << (-(v_angle[verticalResolution-1] - M_PI)) * 180.0 / M_PI << " .. "
+                  << (-(v_angle[0] - M_PI)) * 180.0 / M_PI << "] deg (+ = up)  channels kept "
+                  << kept_layers << "/" << verticalResolution << std::endl;
 
     // h_angle is strictly DECREASING in i, so walking i backwards emits the cloud already sorted by
     // ascending phi. That replaces the std::ranges::sort this used to run over ~74k points every scan.
@@ -897,10 +975,9 @@ void SpecificWorker::receiving_lidarData(const std::string &name, webots::Lidar*
                      and std::isfinite(lidar_point.z())))
                 continue;
 
-            // Keep only the layers that clear the robot's own body. These bounds are P3Bot's, not
-            // Shadow's: the helios sits at tiltAngle −0.34 ("flipped"), which is a different band from
-            // the (2.8799, 4.10152) webots-bridge uses. Down is +, up is −, horizon is π.
-            if (name == "helios" and (v_angle[j] > 3.40339f or v_angle[j] < 2.1816f))
+            // The hardcoded helios band is gone — it was tuned against a fabricated fan and against
+            // the belief that tiltAngle flips the sensor. The channel window above replaces it.
+            if (not layer_kept[j])
                 continue;
 
             RoboCompLidar3D::TPoint point;

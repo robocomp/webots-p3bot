@@ -224,8 +224,18 @@ PROTO P3Bot [
       tiltAngle 0                        # was -0.34: it SPUN THE SWEEP 19.5 deg, see above
       horizontalResolution 900
       fieldOfView 6.28
-      verticalFieldOfView 1.2217304764   # 70 deg (H32F70). Was pi. With tilt -0.34: -54.5..+15.5
-      numberOfLayers 32                  # was 82
+      # ★2026-08-29 (2nd pass): 70 deg / 32 layers is a SYMMETRIC +-35 sensor, because Webots
+      # spreads layers evenly about the device horizon and tiltAngle cannot move them (it rotates
+      # the sweep — see the block above the rotation field). To get the H32F70's -55..+15 the span
+      # has to be GENERATED: a symmetric 110 deg fan (= 2 x 55) contains every real channel
+      # elevation, and p3bot-bridge publishes only the 32 inside [-55, +15]
+      # (LidarChannels.helios.*). 50 layers over 110 deg = 2.2449 deg/layer against the real unit's
+      # 70/31 = 2.258 mean. The real table is NON-uniform (2/1.5/1.33/2/3 deg bands, manual Table
+      # 5); a uniform fan is the closest Webots gets.
+      # ⚠Only valid WITH the bridge window. Without it this is a +-55 deg sensor that sees almost
+      # straight down — the exact defect the 2026-08-27 change removed.
+      verticalFieldOfView 1.9198621771937625   # 110 deg = 2 x 55, so the -55 channel exists
+      numberOfLayers 50                  # 32 survive the [-55,+15] window; was 32 over 70 deg
       maxRange 8
       noise 0.005
       defaultFrequency 20

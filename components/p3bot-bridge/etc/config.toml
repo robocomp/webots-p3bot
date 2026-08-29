@@ -164,3 +164,11 @@ Warn.Connections = "0"
 Trace.Network = "0"
 Trace.Protocol = "0"
 MessageSizeMax = "20004800"
+
+# ---------------------------------------------------------------------------------------------
+# LIDAR CHANNEL WINDOW — see etc/config for the reasoning. Webots ignores tiltAngle (it rotates
+# the SWEEP in azimuth, measured 19.5 deg) and can only spread layers symmetrically, so the proto
+# generates a 110 deg / 50 layer fan and this window keeps the 32 channels an H32F70 really has.
+[LidarChannels.helios]
+ElevMinDeg = -55.0
+ElevMaxDeg = 15.0
