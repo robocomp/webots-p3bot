@@ -859,6 +859,50 @@ void SpecificWorker::receiving_camera360Data(webots::Camera* _camera1, webots::C
     double_buffer_360.put(std::move(newImage360));
 }
 
+// Reads `tiltAngle` and the mount rotation off the RUNNING scene tree, once per device, and prints
+// them. Nothing here feeds the geometry — the fan below is built symmetric about the device horizon
+// and deliberately ignores tiltAngle (webots-bridge f153134: applying it put 27% of the cloud
+// outside the room). This is the TRIPWIRE for that decision: P3Bot.proto sets tiltAngle 0 today
+// (webots-p3bot a688938), so a non-zero reading here means someone re-added a rotation the beams
+// will not honour, and the published cloud is being skewed in azimuth by that much.
+// getField() returns null for a node inside a PROTO, hence the getBaseNodeField() fallback.
+static double lidar_tilt_angle(webots::Supervisor* sup, webots::Lidar* dev, const std::string& name)
+{
+    static std::map<std::string, double> cache;
+    if (const auto it = cache.find(name); it != cache.end())
+        return it->second;
+
+    double tilt = 0.0;
+    const char* how = "absent -> 0";
+    if (sup != nullptr and dev != nullptr)
+        if (webots::Node* node = sup->getFromDevice(dev); node != nullptr)
+        {
+            webots::Field* f = node->getField("tiltAngle");
+            if (f != nullptr) how = "getField";
+            else { f = node->getBaseNodeField("tiltAngle"); if (f != nullptr) how = "getBaseNodeField"; }
+            if (f != nullptr) tilt = f->getSFFloat();
+        }
+    // The MOUNT as well, because "is the cloud upside down?" cannot be answered from the beam
+    // geometry alone, and reading it here beats inferring it from a proto file that may not be
+    // the one the running world loaded.
+    double rot[4] = {0, 0, 0, 0};
+    if (sup != nullptr and dev != nullptr)
+        if (webots::Node* node = sup->getFromDevice(dev); node != nullptr)
+        {
+            webots::Field* rf = node->getField("rotation");
+            if (rf == nullptr) rf = node->getBaseNodeField("rotation");
+            if (rf != nullptr)
+                if (const double* v = rf->getSFRotation(); v != nullptr)
+                    for (int k = 0; k < 4; ++k) rot[k] = v[k];
+        }
+    std::cout << "[Lidar] " << name << ": tiltAngle = " << tilt << " rad ("
+              << tilt * 180.0 / M_PI << " deg, " << how << ")"
+              << "  node rotation = [" << rot[0] << " " << rot[1] << " " << rot[2]
+              << "] " << rot[3] << " rad" << std::endl;
+    cache[name] = tilt;
+    return tilt;
+}
+
 void SpecificWorker::receiving_lidarData(const std::string &name, webots::Lidar* _lidar,
                                          DoubleBuffer<RoboCompLidar3D::TData, RoboCompLidar3D::TData> &_lidar3dData,
                                          FixedSizeDeque<RoboCompLidar3D::TData>& delay_queue, long timestamp)
@@ -872,6 +916,7 @@ void SpecificWorker::receiving_lidarData(const std::string &name, webots::Lidar*
     const int    verticalResolution   = _lidar->getNumberOfLayers();
     const double fov                  = _lidar->getFov();
     const double angleResolution      = fov / horizontalResolution;
+    [[maybe_unused]] const double tiltAngle = lidar_tilt_angle(robot, _lidar, name);
     // ── BEAM GEOMETRY COMES FROM THE DEVICE ─────────────────────────────────────────────────
     // Was: `name == "helios" ? 2.8 : getVerticalFov()`, copied from webots-bridge along with the
     // belief that tiltAngle narrows the usable band. Both were wrong, and both were MEASURED wrong
@@ -953,7 +998,8 @@ void SpecificWorker::receiving_lidarData(const std::string &name, webots::Lidar*
     if (announced.insert(name).second)
         std::cout << "[Lidar] " << name << ": layers=" << verticalResolution
                   << " vfov=" << verticalFov * 180.0 / M_PI << " deg step=" << v_step * 180.0 / M_PI
-                  << " deg -> device-frame elevation span ["
+                  << " deg tilt=" << tiltAngle * 180.0 / M_PI << " deg (declared, NOT applied)"
+                  << " -> device-frame elevation span ["
                   << (-(v_angle[verticalResolution-1] - M_PI)) * 180.0 / M_PI << " .. "
                   << (-(v_angle[0] - M_PI)) * 180.0 / M_PI << "] deg (+ = up)  channels kept "
                   << kept_layers << "/" << verticalResolution << std::endl;
