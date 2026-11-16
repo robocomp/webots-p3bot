@@ -28,6 +28,47 @@ PROTO KinovaGen3 [
   field  SFFloat     joint7Position  1.4835
 ]
 {
+    %<
+      // Pose each endPoint at its initial joint angle. Webots takes an endPoint transform as given,
+      // so writing only jointParameters.position would just shift the encoder zero.
+      const mirror = fields.mirrorInitialPoseFromPrefix.value && fields.prefix.value === "Left_";
+      const q = [null,
+        mirror ? -fields.joint1Position.value : fields.joint1Position.value,
+        fields.joint2Position.value,
+        mirror ? -fields.joint3Position.value : fields.joint3Position.value,
+        fields.joint4Position.value,
+        mirror ? -fields.joint5Position.value : fields.joint5Position.value,
+        fields.joint6Position.value,
+        fields.joint7Position.value];
+      function aaToM(a) {
+        const n = Math.hypot(a[0], a[1], a[2]) || 1, x = a[0]/n, y = a[1]/n, z = a[2]/n;
+        const c = Math.cos(a[3]), s = Math.sin(a[3]), C = 1 - c;
+        return [[c + x*x*C, x*y*C - z*s, x*z*C + y*s],
+                [y*x*C + z*s, c + y*y*C, y*z*C - x*s],
+                [z*x*C - y*s, z*y*C + x*s, c + z*z*C]];
+      }
+      function mul(A, B) {
+        return A.map(r => [0, 1, 2].map(j => r[0]*B[0][j] + r[1]*B[1][j] + r[2]*B[2][j]));
+      }
+      function mToAa(M) {
+        const t = Math.acos(Math.max(-1, Math.min(1, (M[0][0] + M[1][1] + M[2][2] - 1) / 2)));
+        if (t < 1e-9) return [0, 0, 1, 0];
+        if (Math.PI - t < 1e-6) {
+          const x = Math.sqrt(Math.max(0, (M[0][0] + 1) / 2)), y = Math.sqrt(Math.max(0, (M[1][1] + 1) / 2)), z = Math.sqrt(Math.max(0, (M[2][2] + 1) / 2));
+          const sy = M[0][1] + M[1][0] < 0 ? -1 : 1, sz = M[0][2] + M[2][0] < 0 ? -1 : 1;
+          return x > 1e-6 ? [x, sy*y, sz*z, t] : [0, y, (M[1][2] + M[2][1] < 0 ? -1 : 1)*z, t];
+        }
+        const s = 2*Math.sin(t);
+        return [(M[2][1] - M[1][2])/s, (M[0][2] - M[2][0])/s, (M[1][0] - M[0][1])/s, t];
+      }
+      function endPoint(anchor, axis, angle, t0, r0) {
+        const R = aaToM([axis[0], axis[1], axis[2], angle]);
+        const d = [t0[0] - anchor[0], t0[1] - anchor[1], t0[2] - anchor[2]];
+        const t = [0, 1, 2].map(i => anchor[i] + R[i][0]*d[0] + R[i][1]*d[1] + R[i][2]*d[2]);
+        const a = mToAa(mul(R, aaToM(r0)));
+        return 'translation ' + t.join(' ') + '\n rotation ' + a.join(' ');
+      }
+    >%
   Solid {
     translation IS translation
     rotation IS rotation
@@ -46,7 +87,7 @@ PROTO KinovaGen3 [
         jointParameters HingeJointParameters {
           axis -0.000000 0.000007 -1.000000
           anchor 0.000000 0.000000 0.156430
-          position %<= fields.mirrorInitialPoseFromPrefix.value && fields.prefix.value === "Left_" ? -fields.joint1Position.value : fields.joint1Position.value; >%
+          position %<= q[1] >%
         }
         device [
           RotationalMotor {
@@ -59,8 +100,7 @@ PROTO KinovaGen3 [
           }
         ]
         endPoint Solid {
-          translation 0.000000 0.000000 0.156430
-          rotation 1.000000 -0.000000 -0.000000 3.141600
+          %<= endPoint([0.0, 0.0, 0.15643], [-0.0, 7e-06, -1.0], q[1], [0.0, 0.0, 0.15643], [1.0, -0.0, -0.0, 3.1416]) >%
           children [
             Shape {
               appearance DEF Shoulder_Link_material PBRAppearance {
@@ -76,7 +116,7 @@ PROTO KinovaGen3 [
               jointParameters HingeJointParameters {
                 axis -0.000000 -1.000000 -0.000004
                 anchor 0.000000 0.005375 -0.128380
-                position %<= fields.joint2Position.value; >%
+                position %<= q[2] >%
               }
               device [
                 RotationalMotor {
@@ -91,8 +131,7 @@ PROTO KinovaGen3 [
                 }
               ]
               endPoint Solid {
-                translation 0.000000 0.005375 -0.128380
-                rotation 1.000000 -0.000000 -0.000000 1.570800
+                %<= endPoint([0.0, 0.005375, -0.12838], [-0.0, -1.0, -4e-06], q[2], [0.0, 0.005375, -0.12838], [1.0, -0.0, -0.0, 1.5708]) >%
                 children [
                   Shape {
                     appearance DEF HalfArm1_Link_material PBRAppearance {
@@ -108,7 +147,7 @@ PROTO KinovaGen3 [
                     jointParameters HingeJointParameters {
                       axis 0.000000 1.000000 -0.000004
                       anchor 0.000000 -0.210380 -0.006375
-                      position %<= fields.mirrorInitialPoseFromPrefix.value && fields.prefix.value === "Left_" ? -fields.joint3Position.value : fields.joint3Position.value; >%
+                      position %<= q[3] >%
                     }
                     device [
                       RotationalMotor {
@@ -121,8 +160,7 @@ PROTO KinovaGen3 [
                       }
                     ]
                     endPoint Solid {
-                      translation 0.000000 -0.210380 -0.006375
-                      rotation -1.000000 0.000000 -0.000000 1.570800
+                      %<= endPoint([0.0, -0.21038, -0.006375], [0.0, 1.0, -4e-06], q[3], [0.0, -0.21038, -0.006375], [-1.0, 0.0, -0.0, 1.5708]) >%
                       children [
                         Shape {
                           appearance DEF HalfArm2_Link_material PBRAppearance {
@@ -138,7 +176,7 @@ PROTO KinovaGen3 [
                           jointParameters HingeJointParameters {
                             axis -0.000000 -1.000000 -0.000004
                             anchor 0.000000 0.006375 -0.210380
-                            position %<= fields.joint4Position.value; >%
+                            position %<= q[4] >%
                           }
                           device [
                             RotationalMotor {
@@ -153,8 +191,7 @@ PROTO KinovaGen3 [
                             }
                           ]
                           endPoint Solid {
-                            translation 0.000000 0.006375 -0.210380
-                            rotation 1.000000 -0.000000 -0.000000 1.570800
+                            %<= endPoint([0.0, 0.006375, -0.21038], [-0.0, -1.0, -4e-06], q[4], [0.0, 0.006375, -0.21038], [1.0, -0.0, -0.0, 1.5708]) >%
                             children [
                               Shape {
                                 appearance DEF ForeArm_Link_material PBRAppearance {
@@ -170,7 +207,7 @@ PROTO KinovaGen3 [
                                 jointParameters HingeJointParameters {
                                   axis 0.000000 1.000000 -0.000004
                                   anchor 0.000000 -0.208430 -0.006375
-                                  position %<= fields.mirrorInitialPoseFromPrefix.value && fields.prefix.value === "Left_" ? -fields.joint5Position.value : fields.joint5Position.value; >%
+                                  position %<= q[5] >%
                                 }
                                 device [
                                   RotationalMotor {
@@ -183,12 +220,7 @@ PROTO KinovaGen3 [
                                   }
                                 ]
                                 endPoint Solid {
-                                  translation 0.000000 -0.208430 -0.006375
-                                  %< if (fields.invertWrist.value) { >%
-                                      rotation -6.781012696521093e-09 0.7071062811861719 0.7071072811865696 3.14159
-                                  %< } else { >%
-                                      rotation -1.000000 0.000000 0.000000 1.570800
-                                  %< } >%
+                                  %<= endPoint([0.0, -0.20843, -0.006375], [0.0, 1.0, -4e-06], q[5], [0.0, -0.20843, -0.006375], fields.invertWrist.value ? [-6.781012696521093e-09, 0.7071062811861719, 0.7071072811865696, 3.14159] : [-1.0, 0.0, 0.0, 1.5708]) >%
                                   children [
                                     Shape {
                                       appearance DEF SphericalWrist1_Link_material PBRAppearance {
@@ -204,7 +236,7 @@ PROTO KinovaGen3 [
                                       jointParameters HingeJointParameters {
                                         axis -0.000000 -1.000000 -0.000004
                                         anchor 0.000000 0.000175 -0.105930
-                                        position %<= fields.joint6Position.value; >%
+                                        position %<= q[6] >%
                                       }
                                       device [
                                         RotationalMotor {
@@ -219,8 +251,7 @@ PROTO KinovaGen3 [
                                         }
                                       ]
                                       endPoint Solid {
-                                        translation 0.000000 0.000175 -0.105930
-                                        rotation 1.000000 -0.000000 -0.000000 1.570800
+                                        %<= endPoint([0.0, 0.000175, -0.10593], [-0.0, -1.0, -4e-06], q[6], [0.0, 0.000175, -0.10593], [1.0, -0.0, -0.0, 1.5708]) >%
                                         children [
                                           Shape {
                                             appearance DEF SphericalWrist2_Link_material PBRAppearance {
@@ -236,7 +267,7 @@ PROTO KinovaGen3 [
                                             jointParameters HingeJointParameters {
                                               axis -0.000000 1.000000 -0.000004
                                               anchor 0.000000 -0.105930 -0.000175
-                                              position %<= fields.joint7Position.value; >%
+                                              position %<= q[7] >%
                                             }
                                             device [
                                               RotationalMotor {
@@ -249,8 +280,7 @@ PROTO KinovaGen3 [
                                               }
                                             ]
                                             endPoint Solid {
-                                              translation 0.000000 -0.105930 -0.000175
-                                              rotation -1.000000 -0.000000 0.000000 1.570800
+                                              %<= endPoint([0.0, -0.10593, -0.000175], [-0.0, 1.0, -4e-06], q[7], [0.0, -0.10593, -0.000175], [-1.0, -0.0, 0.0, 1.5708]) >%
                                               children [
                                                 # Agrupamos los Sliders en un Group para no romper la física del Bracelet_Link
                                                 Group {

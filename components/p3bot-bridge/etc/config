@@ -35,7 +35,7 @@ Period.Sensors = 32
 # ── Base kinematics ──────────────────────────────────────────────────────────
 # P3Bot is a four-wheel mecanum base and there is no runtime choice to make, so unlike webots-bridge
 # there is no Base.Kinematics key here. The geometry is compiled in from protos/P3Bot.proto:
-#     WHEEL_RADIUS 0.08   LX 0.125   LY 0.240      (src/specificworker.h)
+#     WHEEL_RADIUS 0.0765   LX 0.126   LY 0.25577      (src/specificworker.h)
 # If a future world changes the wheel layout, change the proto and those three constants together --
 # the inverse and forward kinematics are built from the same numbers so they cannot drift apart.
 

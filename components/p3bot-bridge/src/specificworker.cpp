@@ -69,10 +69,7 @@ void SpecificWorker::initialize()
     try { pars.delay    = configLoader.get<bool>("Delay"); } catch(...) {}
     try { pars.do_joystick = configLoader.get<bool>("Joystick"); } catch(...) {}
 
-    // Where the published base velocity comes from, and how often it goes out. Note the string MUST be
-    // quoted in etc/config: ConfigLoader::processLine throws "type not recognized" for a bare word and
-    // the throw escapes load() before any get() runs, so an unquoted value aborts startup rather than
-    // falling back to the default here.
+    // Source and rate of the published base velocity. Strings must be quoted in etc/config.
     std::string velocity_source = "wheels";
     try { velocity_source = configLoader.get<std::string>("FullPose.VelocitySource"); } catch(...) {}
     fullpose_velocity_source_ = velocity_source == "supervisor" ? VelocitySource::Supervisor
@@ -205,11 +202,7 @@ void SpecificWorker::initialize()
     const bool have_arm_r = open_arm("Right_", kinovaArmRMotors, kinovaArmRSensors);
     const bool have_arm_l = open_arm("Left_",  kinovaArmLMotors, kinovaArmLSensors);
 
-    // ── Grippers ─────────────────────────────────────────────────────────────────────────────────
-    // The slider limits come from the arm node's armsMinPosition/armsMaxPosition fields (the proto
-    // wires them to the SliderJoints' minStop/maxStop). Reading them through getFromDef used to be an
-    // unguarded deref of getFromDef("KINOVA_ARM_L"), which segfaults in any world that does not DEF
-    // its arm — arm_table.wbt among them. Fall back to the proto's own defaults instead.
+    // ── Grippers: slider limits from the arm node, falling back to the proto defaults ──
     const auto open_hand = [this, compute_period](const std::string &prefix, const std::string &arm_def,
                                                   Hand &hand)
     {
@@ -270,64 +263,10 @@ void SpecificWorker::initialize()
               << (1000.0 / fullpose_publish_period_ms) << " Hz; IMU @ step rate ("
               << (1000.0 / compute_period) << " Hz nominal)" << std::endl;
 
-    // ── Home poses ───────────────────────────────────────────────────────────────────────────────
-    // Applied once, and only to arms that exist. Two different right-arm homes, picked by whether
-    // this world has a left arm at all:
-    //
-    //  * P3BOT_HOME_R/L — arms at rest along the body, hands laid on the wheel covers. Both
-    //    upper arms hang all but vertically from the shoulders (2.5° and 1.6° off plumb, elbows at
-    //    z 0.51 m); each forearm then swings ~43° back and inboard, and the wrist turns the hand
-    //    through 90° so the gripper points straight FORWARD, palm down, resting on the fender over
-    //    the wheels. Numbers, in the proto's own body frame (+x forward, +y left, +z up, i.e. the
-    //    frame INSIDE P3Bot.proto's +90° wrapper): tool axis (1, 0, 0) to within 0.15°, jaw line
-    //    horizontal across the robot, bracelet at (−0.070, ±0.235, 0.2775) m to within 1.1 mm.
-    //    The fender deck under the hands tops out at z 0.251 m, and the lowest corner of each
-    //    gripper sits at 0.254 m — 3 mm of air, so the hands read as resting without the meshes
-    //    interpenetrating (there is no self-collision here anyway: Robot.selfCollision is FALSE).
-    //    Closest approach to p3bot_body.obj is 6 mm, at the palm's inboard-front corner where the
-    //    pedestal shoulder rises out of the deck at |y| 0.17. The arms stay inside the chassis
-    //    front-to-back (x −0.176..+0.143 against a base of ±0.226) but reach |y| 0.321 at the
-    //    elbows — 27 mm wider per side than the 0.294 m body half-width. That is the shoulder
-    //    MOUNTS talking: they already sit at |y| 0.310, so no hanging pose is narrower. Anything
-    //    that plans on the body footprint (see robot-body-from-mesh) does not know about it.
-    //
-    //    Three geometric facts pin this pose down, and re-deriving it means honouring all three:
-    //      · the shoulder sits 0.677 m above the deck while shoulder→wrist→tool is 0.779 m, so the
-    //        arm MUST fold by ~30° in total; a perfectly straight hanging arm would drive the hand
-    //        through the fender.
-    //      · Actuator6 is the binding constraint, not reach. With the upper arm plumb, the forearm
-    //        takes the whole fold, and turning the tool from a 43°-back forearm to dead-ahead needs
-    //        a wrist pitch of 2.2296 rad against a 2.23 stop. Both homes therefore sit 2 mrad off
-    //        that stop, deliberately. Trading it away costs either a 32° backward lean of the upper
-    //        arm (elbow out past the chassis rear) or an elbow flared to |y| 0.39.
-    //      · the hands cannot move inboard: the palm housing is 108 mm wide and the flat of the
-    //        deck only spans |y| 0.18..0.24 before the pedestal climbs to z 0.30+.
-    //
-    //    How far the arms actually travel on connect depends on the world: play_room.wbt spawns at
-    //    the KinovaGen3 proto's joint*Position defaults, while WAF.wbt deliberately spawns both
-    //    arms straight (all joints 0) and they fold in over ~2.8 s once the bridge attaches. That
-    //    travel time is real — a client that issues moveJointsWithSpeed inside that window switches
-    //    the motors to velocity mode and leaves the arm half-homed.
-    //
-    //    The two sides are NOT sign flips of each other, and deliberately so. That flip is what the
-    //    proto does for its spawn pose (`mirrorInitialPoseFromPrefix`), and it is only an
-    //    approximation: the Gen3's own 5–6 mm link offsets are not mirror-symmetric, and neither
-    //    are the two mounts in P3Bot.proto (right at y −0.0518, left at +0.055, and x 0 vs 0.002).
-    //    Each side below was solved on its own against the mirrored Cartesian target, which lands
-    //    the joint origins within 6 mm of each other's reflection. If this pose is ever retuned,
-    //    RE-SOLVE both — do not hand-flip signs.
-    //
-    //    The previous folded-in home, kept here in case it is wanted back:
-    //      R{ 0.7938f, -2.0612f,  1.1979f, -2.2098f, -0.2507f, -1.1446f, 1.7015f}
-    //      L{-0.698f,  -2.0944f, -1.047f,  -2.2689f,  0.3491f, -1.1345f, 1.4835f}
-    //
-    //  * ARM_TABLE_HOME_R — the rest pose for the stand-alone arm-on-desk world (arm_table.wbt),
-    //    where there is no left arm and the arm base sits upright on the desk instead of on a torso.
-    //    It puts the shoulder mildly forward (≈17°), the elbow bent (≈86°) so it rises above the
-    //    shoulder, and the wrist pitched (≈80°) so the tool faces straight down. Pinocchio FK places
-    //    tool_frame at (+0.41, −0.025, +0.33) m in the arm-base frame, approach ≈(0, 0, −1) — plenty
-    //    of clearance above the desk for the EFE-gradient controller to take over. Sending the P3Bot
-    //    home there instead would drive the arm through the torso.
+    // ── Home poses, applied once to the arms present ──
+    // P3BOT_HOME_R/L: arms resting along the body. ⚠ Solved for the OLD tilted arm mounts; must be
+    // re-solved (each side on its own, not sign-flipped) for the V2 upright mounts.
+    // ARM_TABLE_HOME_R: single arm on a desk (arm_table.wbt), tool pointing down.
     const RoboCompKinovaArm::Angles P3BOT_HOME_R{-1.5985f, -1.1188f, -2.0034f,  0.7738f, -2.5660f,  2.2280f, -1.1933f};
     const RoboCompKinovaArm::Angles P3BOT_HOME_L{-1.5503f,  1.1393f,  1.9669f, -0.7492f,  2.6203f, -2.2280f, -1.9245f};
     const RoboCompKinovaArm::Angles ARM_TABLE_HOME_R{0.0f, 0.3f, 0.0f, 1.5f, 0.0f, 1.4f, 0.0f};
@@ -335,12 +274,12 @@ void SpecificWorker::initialize()
     if (have_arm_r)
     {
         set_gripper_pos(right_hand, 0.f);
-        move_arm_with_angle(have_arm_l ? P3BOT_HOME_R : ARM_TABLE_HOME_R, kinovaArmRMotors, 0.8f);
+        // move_arm_with_angle(have_arm_l ? P3BOT_HOME_R : ARM_TABLE_HOME_R, kinovaArmRMotors, 0.8f);
     }
     if (have_arm_l)
     {
         set_gripper_pos(left_hand, 0.f);
-        move_arm_with_angle(P3BOT_HOME_L, kinovaArmLMotors, 0.8f);
+        // move_arm_with_angle(P3BOT_HOME_L, kinovaArmLMotors, 0.8f);
     }
 
     std::cout << "Worker initialized OK" << std::endl;
@@ -414,11 +353,8 @@ int SpecificWorker::startup_check()
 
 #pragma region DATA_CATCHING
 
-// Webots refreshes a device's data on steps that are multiples of its sampling period, so the sample
-// currently in hand was taken at the last such multiple — which is up to a full sensor period before
-// the loop time every payload used to be stamped with. Anything that anchors on "when was this scan
-// taken" (a localizer propagating odometry forward from an optimized pose, say) needs the real
-// instant: at 1.5 rad/s a 32 ms error is 2.7 degrees of heading.
+// Webots refreshes a device on multiples of its sampling period, so its sample is up to one
+// period older than the loop time.
 double SpecificWorker::acquisition_sim_ms(double sim_now_ms, int device_period_ms)
 {
     if (device_period_ms <= 0) return sim_now_ms;
@@ -438,10 +374,7 @@ long SpecificWorker::acquisition_wall_ms(long loop_wall_ms, double sim_now_ms, i
 // Runs in the compute() thread only (from receiving_robotSpeed), so clock_pairs_ needs no lock.
 void SpecificWorker::update_sim_wall_rate(double sim_seconds, long wall_ms)
 {
-    // Trailing 10 s window, plus a light EMA. What is being estimated here is how far behind real time
-    // the simulation is running, which is a property of machine load and changes over seconds to
-    // minutes; a 2 s window tracked it far too responsively and swapped a constant bias for a
-    // time-varying one, which is a poor thing to have inside anything that integrates.
+    // Trailing 10 s window plus a light EMA: sim lag changes slowly with machine load.
     clock_pairs_.emplace_back(sim_seconds, wall_ms);
     while (clock_pairs_.size() > 2 and (wall_ms - clock_pairs_.front().second) > 10000)
         clock_pairs_.pop_front();
@@ -472,15 +405,8 @@ double SpecificWorker::generate_noise(double stddev)
     return d(gen);
 }
 
-// Runs in the compute() thread only, from receiving_robotSpeed, so this needs no lock — same as
-// clock_pairs_. Differences the four wheel encoders over SIMULATION time and inverts the mecanum IK of
-// apply_pending_speed_command(). Returns false when there is no usable sample, in which case the
-// previous velocity is held — which is what a real odometry driver does on a dropped frame.
-//
-// `publishing` says whether this cycle will emit a FullPose. The twist is differenced across that
-// whole publish interval rather than sampled from one step, so it is the exact mean over the interval
-// the consumer will integrate it across (see WheelOdometry in the header for why that matters). The
-// encoders are still READ every step, because that is what catches a reset and re-seeds the anchor.
+// Compute thread only. Differences the wheel encoders over sim time across the publish interval
+// and inverts the mecanum IK. Returns false (previous velocity held) when there is no usable sample.
 bool SpecificWorker::update_wheel_odometry(double sim_seconds, bool publishing)
 {
     double angle[4] = {0, 0, 0, 0};
@@ -493,12 +419,7 @@ bool SpecificWorker::update_wheel_odometry(double sim_seconds, bool publishing)
         if (not std::isfinite(angle[i])) { wheel_odo_.seeded = false; wheel_odo_.valid = false; return false; }
     }
 
-    // Closed-form inverse of the mecanum IK in apply_pending_speed_command(). w[] are the RAW motor
-    // rates for motors wheel1..wheel4. The two LEFT wheels — w[1] and w[3], motors wheel2 and wheel4 —
-    // declare `axis 0 -1 0` in the proto, so their sign is flipped relative to the textbook mecanum
-    // forward kinematics: that is why `adv` alternates, `rot` does not, and `side` pairs by side of
-    // the robot rather than by diagonal. Verified against an independent model derived straight from
-    // the proto's roller and axis geometry; see the header for the derivation.
+    // Inverse of the mecanum IK; w[1] and w[3] (left wheels) have inverted hinge axes.
     const auto twist_from = [this](const double *anchor_angle, const double *angle_now, double dt)
     {
         double w[4] = {0, 0, 0, 0};
@@ -515,12 +436,7 @@ bool SpecificWorker::update_wheel_odometry(double sim_seconds, bool publishing)
         return std::pair{Eigen::Vector2f{static_cast<float>(-side), static_cast<float>(adv)}, rot};
     };
 
-    // First usable sample: anchor and produce nothing. The anchor must be a REAL encoder reading and
-    // not the zero it was constructed with, or the first publish differences the ABSOLUTE encoder
-    // angle against zero and reports the robot's whole history as one interval's motion. Invisible at
-    // world start, where the angles are ~0, and badly wrong whenever this component restarts against a
-    // world that has already been running — or after a resetWebots, which is why that handler
-    // re-zeroes wheel_odo_ rather than leaving it seeded.
+    // Seed the anchor from a real encoder reading (also after a reset), never from zero.
     if (not wheel_odo_.seeded)
     {
         std::copy(std::begin(angle), std::end(angle), std::begin(wheel_odo_.pub_angle));
@@ -532,11 +448,7 @@ bool SpecificWorker::update_wheel_odometry(double sim_seconds, bool publishing)
 
     if (publishing)
     {
-        // dt is NOT constant: Period.Compute (8) sits below the world's basicTimeStep so Webots rounds
-        // every step anyway, and hibernation (if ever enabled) would drop it to 500 ms. Hence sim time,
-        // never a configured period. Reject dt == 0 — a paused simulator, where wb_robot_step returns
-        // without advancing — but do NOT reject a long interval: under hibernation a long one is the
-        // normal case, and the mean over it is still exact.
+        // dt is not constant: use sim time and only reject dt == 0 (paused simulator).
         const double pub_dt = sim_seconds - wheel_odo_.pub_sim_t;
         if (pub_dt > 1e-4)
         {
@@ -559,20 +471,8 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
     const double* orientation_m = robotNode->getOrientation();
     const double* velocity    = robotNode->getVelocity();
 
-    // ── The yaw convention, and why P3Bot's differs from Shadow's by exactly M_PI_2 ───────────────
-    // getOrientation() is the row-major body→world matrix, so for a pure yaw θ it reads
-    // [cosθ, -sinθ, 0; sinθ, cosθ, 0; 0,0,1] and atan2(m[1], m[0]) = -θ. webots-bridge then subtracts
-    // M_PI_2 because Shadow's forward axis is local +Y, i.e. its world HEADING is θ + π/2 — so what
-    // that expression yields is -heading in both cases.
-    //
-    // P3Bot's forward axis is local +Y as of 2026-08-22 (P3Bot.proto wraps every child in a
-    // Pose rotated +90° about z so the robot's own frame matches Shadow's). Its world HEADING is
-    // therefore θ + π/2 and the M_PI_2 IS subtracted, exactly as the Shadow bridge does.
-    // ⚠ This constant is bound to the proto's wrapper: if that Pose is ever removed (forward back
-    // to +X, which the zed's identity rotation and ±Y wheel hinges would then show), drop the
-    // M_PI_2 again or every published adv/side is 90° out of phase with the robot's real motion —
-    // which is precisely the bug this file carried when it was first copied from the Shadow bridge.
-    // adv/side/rot/rz mean the same thing on both robots either way; only this term differs.
+    // getOrientation() gives atan2 = -theta. Forward is local +Y (the proto's +90 deg device wrapper),
+    // so heading = theta + pi/2 and M_PI_2 is subtracted, as in the Shadow bridge.
     const float orientation = static_cast<float>(atan2(orientation_m[1], orientation_m[0]) - M_PI_2);
 
 #if BRIDGE_YAWRATE_DIAG
@@ -600,10 +500,7 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
     }
 #endif
 
-    // Webots reports velocities per SIMULATION second, and that is what we publish: `simTimestamp`
-    // carries the clock they are measured in, so a consumer integrates the true rate over the matching
-    // clock and needs no correction. sim_wall_rate_ is still estimated — acquisition_wall_ms() needs
-    // it — but it no longer scales any published velocity.
+    // Velocities are per sim second; simTimestamp carries that clock.
     update_sim_wall_rate(_robot->getTime(), timestamp);
 #if BRIDGE_WALL_TIME_VELOCITIES
     const double k_wall = sim_wall_rate_;
@@ -637,10 +534,7 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
     if (not publishing) return;
     next_fullpose_publish_ms = sim_now_ms + fullpose_publish_period_ms;
 
-    // Both channels are per SIM second, exactly like getVelocity(), so they take the SAME single
-    // k_wall. That holds only because update_wheel_odometry divides by robot->getTime() deltas —
-    // differencing over `timestamp` (wall ms) would already be per-wall-second and k_wall would be
-    // counted twice.
+    // Both channels are per sim second (odometry divides by sim-time deltas).
     Eigen::Vector2f velocity_local = velocity_local_sup;
     double          rot_velocity   = rot_velocity_sup;
     if (fullpose_velocity_source_ == VelocitySource::Wheels)
@@ -652,33 +546,14 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
         rot_velocity   = k_wall * wheel_odo_.rot;
     }
 
-    // ── SYNTHETIC WHEEL ERROR ────────────────────────────────────────────────────────────────────
-    // Applied HERE, on the values actually published, so every consumer sees one consistent corrupted
-    // stream — which is the whole difference between this and a per-consumer test hook. The scale is
-    // constant for the run (a wheel radius does not change per sample); the noise is a density, so the
-    // rate perturbation is sigma/sqrt(dt) and the accumulated increment has variance sigma^2*dt. dt is
-    // the PUBLISH period, because that is the interval a consumer integrates this sample across.
+    // ── Synthetic wheel error, applied to the published values ──
+    // Constant scale plus noise density (sigma/sqrt(dt), dt = publish period).
     if (sensor_noise_enabled_)
     {
         const double dt_pub = std::max(1e-3, fullpose_publish_period_ms * 1e-3);
         const double inv_sqrt_dt = 1.0 / std::sqrt(dt_pub);
-        // ── WHEEL NOISE IS SPEED-DEPENDENT, and at zero it is essentially zero ────────────────────
-        // A flat density was physically wrong at the one operating point that matters most. An
-        // encoder does not measure velocity, it COUNTS: over an interval the count difference is an
-        // integer, and when the wheel is not turning that difference is exactly zero. A stationary
-        // wheel therefore reports zero speed with near-certainty — it is not a noisy reading of zero,
-        // it is the absence of counts. The flat model injected 0.118 m/s into a robot that was
-        // demonstrably parked, and the consumer, having no way to know better, integrated it: the
-        // localiser's pose random-walked 210 mm over 3963 cycles with ground truth motionless.
-        //
-        // What actually scales with speed is slip and timing. A timing error dt_e turns into a
-        // velocity error v*dt_e/dt, and slip is a fraction of the distance travelled — both
-        // proportional to v. Quantisation contributes a small floor from the sub-count residual.
-        //     sigma(v) = sqrt(sigma_floor^2 + (k_slip * |v|)^2)
-        // ★ THE CONSUMER NEEDS NO EDIT. velCov below is built from this same sigma, and room_concept
-        // already converts a stated variance into a density (OdomVarianceInjection). That channel was
-        // written and documented as "wired but inert, because the producer publishes one nominal
-        // constant". This is what makes it informative: a variance that actually VARIES.
+        // Wheel noise grows with speed (slip, timing); a stopped wheel reports ~zero:
+        //     sigma(v) = sqrt(sigma_floor^2 + (k_slip * |v|)^2). velCov below uses the same sigma.
         const auto sigma_at = [&](double sigma_floor, double k_slip, double v)
         { return std::hypot(sigma_floor, k_slip * v); };
         wheel_sigma_v_eff_ = sigma_at(wheel_sigma_v_floor_, wheel_sigma_v_,
@@ -718,30 +593,15 @@ void SpecificWorker::receiving_robotSpeed(webots::Supervisor* _robot, long times
     pose_data.side = -velocity_local(0);
     pose_data.rot  = static_cast<float>(rot_velocity);
 
-    // Provenance and both clocks. `timestamp` stays wall-clock so latency and staleness still work;
-    // `simTimestamp` is the instant this refers to on the sim clock, which is the one to integrate
-    // over — the velocities above are per SIM second. Velocity is sampled at the publish instant, so
-    // there is no acquisition lag to subtract here (unlike the lidar).
+    // timestamp is wall clock (latency); simTimestamp is the sim instant to integrate over.
     pose_data.source       = "p3bot-bridge";
     pose_data.timestamp    = timestamp;
     pose_data.simTimestamp = static_cast<long>(sim_now_ms);
     pose_data.simulated    = true;
 
-    // Nominal, config-driven. Measuring the simulator's own velocity noise would give ~0, and a zero
-    // variance reads downstream as infinite confidence; the real base controller overwrites these once
-    // calibrated. Only the velocity block is known, so pose and acceleration say "unknown".
-    // The published variance must describe the data ACTUALLY SENT. When synthetic wheel noise is on,
-    // these samples carry it, and advertising the clean nominal figure would hand every consumer a
-    // covariance that lies -- so their precisions would all be wrong in the same direction, and a
-    // consumer weighting gyro against wheels would systematically over-trust the wheels. The gyro
-    // path has done this since it was written (nominal + sigma^2/dt); this channel had not, which
-    // made the two sensors' covariances mean different things. dt is the PUBLISH period, the interval
-    // a consumer integrates one sample across.
+    // Nominal config variances plus the synthetic noise actually applied (dt = publish period).
     const double dt_cov = std::max(1e-3, fullpose_publish_period_ms * 1e-3);
-    // The variance advertised is the one ACTUALLY used for this sample, so velCov now varies with
-    // speed exactly as the noise does. A consumer converting it back with sqrt(var*dt_sample)
-    // recovers sigma(v), which is the whole point: at rest it recovers ~0 and there is nothing to
-    // integrate; at speed it recovers the slip term and the prior loosens where it should.
+    // velCov follows the per-sample sigma(v).
     const double vel_extra = sensor_noise_enabled_
                            ? wheel_sigma_v_eff_ * wheel_sigma_v_eff_ / dt_cov : 0.0;
     const double rot_extra = sensor_noise_enabled_
@@ -819,27 +679,9 @@ void SpecificWorker::receiving_camera360Data(webots::Camera* _camera1, webots::C
     img_2.data = (uchar *)webotsImageData2;
     cv::cvtColor(img_2, img_2, cv::COLOR_RGBA2RGB);
 
-    // ── Composite: [cam2 tail | cam1 whole | cam2 head], the same circular roll Shadow uses ──────
-    // Both protos now mount the pair facing the robot's FRONT and BACK, each covering 180° with
-    // Webots' SPHERICAL projection (equirectangular: rows are LINEAR in elevation over a full 180°,
-    // so the 2x960x960 composite is a true 360°x180° 2:1 panorama). It must stay spherical, not
-    // "cylindrical": the retina's depth path hardcodes the equirect map (asin elevation,
-    // rows = H*elev/180 in depth_processor.cpp) and never reads cam_projection, so a cylindrical
-    // frame -- whose rows go as tan(elevation) and top out near +/-58deg -- puts floor returns on
-    // the wrong rows.
-    //
-    // A plain [cam1|cam2] concat puts the SEAM between the two captures at the panorama centre, so
-    // cam1's optical axis -- the robot's forward bearing -- lands a quarter width off-centre and the
-    // one direction that must be clean is exactly the one crossing a stitch. Roll the composite
-    // right by half a camera width so cam1 sits whole in the middle and cam2 is split across the
-    // two edges, where its own seam coincides with the panorama's wrap.
-    //
-    // This was previously a plain concat on the belief that P3Bot's forward (+X) already fell at the
-    // centre. It did not: the two Cameras carried Shadow's +/-90deg rotations verbatim, which on a
-    // +Y-forward robot point front/back but on a +X-forward one point LEFT and RIGHT. The tell was
-    // the robot's own arms -- one per camera, centred in each half, because the coverage boundary
-    // was the y=0 plane running between them. P3Bot.proto now faces the pair along +/-X and this
-    // roll completes the port. Check after any change here: the front camera sees BOTH arms.
+    // ── 360 composite: [cam2 tail | cam1 whole | cam2 head] ──
+    // Rolled half a camera width so the front camera sits whole in the centre. The front camera
+    // must see both arms. Projection must stay spherical: the retina assumes an equirect map.
     const int cw    = _camera1->getWidth();
     const int shift = cw / 2;
     cv::Mat img_final = cv::Mat(cv::Size(cw * 2, _camera1->getHeight()), CV_8UC3);
@@ -859,13 +701,8 @@ void SpecificWorker::receiving_camera360Data(webots::Camera* _camera1, webots::C
     double_buffer_360.put(std::move(newImage360));
 }
 
-// Reads `tiltAngle` and the mount rotation off the RUNNING scene tree, once per device, and prints
-// them. Nothing here feeds the geometry — the fan below is built symmetric about the device horizon
-// and deliberately ignores tiltAngle (webots-bridge f153134: applying it put 27% of the cloud
-// outside the room). This is the TRIPWIRE for that decision: P3Bot.proto sets tiltAngle 0 today
-// (webots-p3bot a688938), so a non-zero reading here means someone re-added a rotation the beams
-// will not honour, and the published cloud is being skewed in azimuth by that much.
-// getField() returns null for a node inside a PROTO, hence the getBaseNodeField() fallback.
+// Reads the lidar tiltAngle from the scene and logs it. Geometry ignores it (it rotates the
+// sweep in azimuth), so a non-zero value means the proto was changed. Expected 0.
 static double lidar_tilt_angle(webots::Supervisor* sup, webots::Lidar* dev, const std::string& name)
 {
     static std::map<std::string, double> cache;
@@ -917,28 +754,12 @@ void SpecificWorker::receiving_lidarData(const std::string &name, webots::Lidar*
     const double fov                  = _lidar->getFov();
     const double angleResolution      = fov / horizontalResolution;
     [[maybe_unused]] const double tiltAngle = lidar_tilt_angle(robot, _lidar, name);
-    // ── BEAM GEOMETRY COMES FROM THE DEVICE ─────────────────────────────────────────────────
-    // Was: `name == "helios" ? 2.8 : getVerticalFov()`, copied from webots-bridge along with the
-    // belief that tiltAngle narrows the usable band. Both were wrong, and both were MEASURED wrong
-    // on Shadow (webots-bridge f153134, 2026-08-29):
-    //   * the 2.8 rad override spreads the proto's layers over a fake 160.4 deg span. Against 32
-    //     layers that is 5.01 deg/layer where the truth is 2.19; the reconstructed cloud then put
-    //     27% of its points outside the building and could not be fitted.
-    //   * tiltAngle does not tilt the fan at all — it ROTATES THE SWEEP IN AZIMUTH. On P3Bot that
-    //     19.5 deg was being cancelled by an unmirrored counter-yaw in the proto
-    //     (`rotation 0 0 1 0.36`), documented there as a calibration for a "~20 deg excess" nobody
-    //     could explain. Both are 0 now (webots-p3bot a688938) and must stay together.
-    // The fan is symmetric about the device's own horizon; the mount lives in the RT edge.
+    // ── Beam geometry from the device: fan symmetric about its horizon, mount in the RT edge ──
     const double verticalFov = _lidar->getVerticalFov();
 
     RoboCompLidar3D::TData newLidar3dData{};
 
-    // The scan was rendered at the last multiple of the lidar's sampling period, which can be a full
-    // sensor_period before now — so stamping it with the loop time (as this did) overstates its
-    // freshness by up to that much. A consumer anchoring an optimized pose on this instant and
-    // propagating odometry forward from it eats that error directly: at 1.5 rad/s, 32 ms is 2.7°.
-    // `period` likewise reported fps.get_period(), the LOOP period, which left no way to even infer
-    // the staleness; it is the device's sampling period.
+    // Stamp with the lidar's acquisition instant and its own sampling period.
     const double lidar_sim_now_ms = robot != nullptr ? robot->getTime() * 1000.0 : 0.0;
     newLidar3dData.timestamp    = acquisition_wall_ms(timestamp, lidar_sim_now_ms, sensor_period);
     newLidar3dData.simTimestamp = static_cast<long>(acquisition_sim_ms(lidar_sim_now_ms, sensor_period));
@@ -965,14 +786,8 @@ void SpecificWorker::receiving_lidarData(const std::string &name, webots::Lidar*
         v_angle[j] = a; v_cos[j] = std::cos(a); v_sin[j] = std::sin(a);
     }
 
-    // Which of the layers Webots generates does the real device actually have? An RS-Helios H32F70
-    // carries 32 channels spanning -55..+15 deg, and Webots can only spread layers SYMMETRICALLY,
-    // so the proto generates a wide symmetric fan that CONTAINS those elevations and this window
-    // drops the rest. Applied to elevations reconstructed from the device's own FOV, so a dropped
-    // layer changes nothing about the layers that remain — unlike the hardcoded theta band this
-    // replaces, which carved a fabricated fan and so moved every point it kept.
-    // Absent config => no window => every layer is published. The 1e-6 slack keeps a window edge
-    // set to exactly the extreme channel (-55) from losing it to floating point.
+    // Keep only the layers of the real H32F70 (-55..+15 deg) from the wider symmetric fan.
+    // No config => all layers. 1e-6 slack keeps the window edges.
     static std::map<std::string, std::pair<double,double>> win_cache;
     if (not win_cache.contains(name))
     {
@@ -1051,10 +866,7 @@ void SpecificWorker::receiving_cameraRGBD(webots::Camera* _camera, webots::Range
 {
     RoboCompCameraRGBDSimple::TRGBD new_zed_image{};
 
-    // Acquisition instant, not loop time. And `period` is the DEVICE's sampling period — it used to
-    // report fps.get_period(), which is the loop period and left a consumer no way to infer the
-    // frame's age. (CameraRGBDSimple carries no simTimestamp field; only Lidar3D, IMU and
-    // FullPoseEstimation have one.)
+    // Acquisition instant and device sampling period (CameraRGBDSimple has no simTimestamp).
     const double zed_sim_now_ms = robot != nullptr ? robot->getTime() * 1000.0 : 0.0;
     const long   zed_acq_ms = acquisition_wall_ms(timestamp, zed_sim_now_ms, sensor_period);
     new_zed_image.image.alivetime = new_zed_image.depth.alivetime = new_zed_image.points.alivetime = zed_acq_ms;
@@ -1253,11 +1065,7 @@ void SpecificWorker::OmniRobot_getBasePose(int &x, int &z, float &alpha)
 {
     hibernation = true;
 
-    // MILLIMETRES here, unlike getBaseState() below, which reports metres because that is what
-    // webots-bridge publishes and what its consumers expect. The units differ because the types do:
-    // these are ints, and this robot's whole workspace rounds to 0 or 1 in metres, so metres would
-    // make the method useless rather than merely inconsistent. The previous version did exactly that.
-    // Served from the snapshot refreshed by compute(); no Webots call here.
+    // Millimetres here (int fields), unlike getBaseState(). Served from the compute() snapshot.
     const std::lock_guard<std::mutex> lock(base_state_mutex);
     x = static_cast<int>(std::lround(base_state.x * 1000.f));
     z = static_cast<int>(std::lround(base_state.z * 1000.f));
@@ -1323,11 +1131,8 @@ void SpecificWorker::apply_pending_speed_command()
     const double adv  = cmd.advz * 0.001;   // mm/s -> m/s, positive forward (local +X)
     const double c    = LX + LY;
 
-    // Mecanum inverse kinematics for P3Bot's wheel layout. The (−adv) rows are wheel2 and wheel4: the
-    // proto gives the two LEFT wheels an inverted hinge axis, so a positive motor velocity drives them
-    // backwards. The all-plus rot column follows from the same inversion — with the left hinges
-    // reversed, a pure spin turns all four motors the same way. update_wheel_odometry() is the exact
-    // algebraic inverse of these four lines; change one and you must change the other.
+    // Mecanum IK. Left wheels (wheel2, wheel4) have inverted hinges: (-adv) rows, all-plus rot.
+    // update_wheel_odometry() is its exact inverse; change both together.
     const double speeds[4] = {
         ( adv - side + c * cmd.rot) / WHEEL_RADIUS,   // wheel1  front-right
         (-adv - side + c * cmd.rot) / WHEEL_RADIUS,   // wheel2  front-left   (axis inverted)
@@ -1353,11 +1158,7 @@ void SpecificWorker::move_arm_with_angle(const RoboCompKinovaArm::Angles &jointA
     for (size_t i = 0; i < loop_limit; ++i)
     {
         if (armMotors[i] == nullptr) { std::cerr << "Null motor at joint " << i << std::endl; continue; }
-        // Webots position-control mode: setVelocity here is the MAX speed at which the motor moves
-        // toward the target. 0.25 rad/s was too slow — homing did not finish before the external
-        // controller connected and switched the motors to velocity mode, leaving the arm half-homed.
-        // 0.8 rad/s reaches a ±π/2 target in about 2 s and stays under the KinovaGen3 proto's
-        // per-motor maxVelocity of 0.8727, so Webots does not have to clip and warn on every call.
+        // Position mode: setVelocity is the max speed (0.8 rad/s, below the proto's 0.8727).
         armMotors[i]->setPosition(jointAngles[i]);
         armMotors[i]->setVelocity(max_velocity);
     }
@@ -1650,10 +1451,7 @@ void SpecificWorker::update_imu_data(long timestamp)
 {
     RoboCompIMU::DataImu data{};
 
-    // The IMU is sampled every step, so its acquisition instant IS the current step — no lag to
-    // subtract, unlike the lidar. simTimestamp is the clock to integrate over: the gyro reports rad
-    // per SIMULATION second, so a consumer integrating it against wall-clock dt over-counts by exactly
-    // the sim/wall ratio.
+    // IMU sampled every step; gyro is per sim second, integrate over simTimestamp.
     const long sim_ts = robot != nullptr ? static_cast<long>(robot->getTime() * 1000.0) : 0;
 
     // Diagonal, isotropic, nominal. See the header for why measuring the simulator's own noise would
@@ -1704,12 +1502,7 @@ void SpecificWorker::update_imu_data(long timestamp)
     if (accelerometer != nullptr)
         if (const double *values = accelerometer->getValues(); values != nullptr)
         {
-            // Proper acceleration, GRAVITY INCLUDED — a real accelerometer reads ~9.81 on the up axis
-            // at rest and Webots models that faithfully. No scale knob here on purpose: an
-            // accelerometer's dominant systematic error is not a scale but a TILT, because a mount
-            // error eps leaks g*sin(eps) into the horizontal axes (0.086 m/s^2 at 0.5 deg, an order
-            // of magnitude above this sensor's own noise). Tilt belongs in the mount geometry, not in
-            // a fake gain, and in simulation it is exactly zero unless the IMU node is tilted.
+            // Proper acceleration, gravity included. No scale knob: real error is mount tilt.
             const double dt_step = std::max(1e-3, static_cast<double>(imu_step_period_ms_) * 1e-3);
             auto [ax, ay] = to_body(values[0], values[1]);
             double az = values[2];
@@ -1729,21 +1522,12 @@ void SpecificWorker::update_imu_data(long timestamp)
     if (gyroscope != nullptr)
         if (const double *values = gyroscope->getValues(); values != nullptr)
         {
-            // ── SYNTHETIC GYRO ERROR, DELIBERATELY UNLIKE THE WHEELS ─────────────────────────────
-            // A gyro does not scrub, so it gets NO scale — only its own noise and a slow bias, which
-            // is the error a rate gyro actually has. Keeping these independent is what lets a consumer
-            // that prefers the gyro for heading show a real advantage, exactly as on hardware; sharing
-            // one error model between the channels would erase that and misrepresent the sensor. dt
-            // here is the STEP period (the IMU samples every step), not the wheel publish period.
+            // ── Synthetic gyro error: noise and slow bias, no scale (dt = step period) ──
             double gz = values[2];
             const double dt_step = std::max(1e-3, static_cast<double>(imu_step_period_ms_) * 1e-3);
             if (sensor_noise_enabled_)
             {
-                // Scale FIRST, then bias and noise: a scale multiplies the true rate, whereas a bias
-                // and the noise are added to whatever the sensor reports. Applying them in the other
-                // order would scale the bias too and the injected error would not be the one written
-                // in the config -- which matters, because this value is the answer the estimator is
-                // being marked against.
+                // Scale first, then bias and noise, so the injected scale is exactly the configured one.
                 gz *= (1.0 + gyro_scale_);
                 gz += gyro_bias_ + generate_noise(gyro_sigma_ / std::sqrt(dt_step));
             }
@@ -1868,10 +1652,7 @@ static RoboCompWebots2Robocomp::Quaternion axisAngleToQuaternion(const webots::F
     return q;
 }
 
-// Webots thread only. DEF first (cheap and unambiguous when authors set one), then a scan of the world
-// root's top-level children for a node whose SFString "name" equals the key. Webots PROTOs (Desk,
-// WaterBottleOpaque, …) expose a "name" but get no automatic DEF, and P3Bot's worlds are written that
-// way, so this catches the common "I set name but forgot DEF" case.
+// Webots thread only. DEF first, then a top-level node whose "name" field equals the key.
 webots::Node* SpecificWorker::find_scene_node(const std::string& key)
 {
     if (auto it = scene_node_cache_.find(key); it != scene_node_cache_.end())
@@ -2015,12 +1796,8 @@ void SpecificWorker::Webots2Robocomp_setObjectPose(std::string DEF, RoboCompWebo
 void SpecificWorker::Webots2Robocomp_resetWebots()
 {
     hibernation = true;
-    // Deferred, like every other write. simulationReset() restores every node to the state the world
-    // was started in and rewinds the simulation clock; it does NOT reload the world, so the node and
-    // field handles cached in scene_node_cache_/object_handles/doorNodes stay valid. What does NOT
-    // survive is the odometry: the encoder angles and the clock both jump backwards, so every anchor
-    // below has to be dropped or the next publish differences across the discontinuity and reports the
-    // whole run as one interval's motion.
+    // Deferred. simulationReset() keeps node handles valid but rewinds encoders and clock,
+    // so the odometry anchors are dropped.
     post_webots_task([this]
     {
         std::cout << "[Info] resetWebots: restoring the world to its initial state." << std::endl;
@@ -2036,10 +1813,7 @@ void SpecificWorker::Webots2Robocomp_resetWebots()
 void SpecificWorker::Webots2Robocomp_setArmJointsInstant(RoboCompKinovaArm::TJointAngles angles)
 {
     hibernation = true;
-    // "Instant" is served as a position command at the KinovaGen3 proto's own per-motor maxVelocity
-    // (0.8727 rad/s) rather than a teleport: a true teleport needs Node::setJointPosition on each
-    // HingeJoint, and the proto gives those joints no DEF to resolve them by. Going faster than
-    // maxVelocity would only make Webots clip the request and warn on every call.
+    // "Instant" = position command at the proto's maxVelocity (joints have no DEF to teleport).
     post_webots_task([this, angles = std::move(angles.jointAngles)]
                      { move_arm_with_angle(angles, kinovaArmRMotors, 0.8727f); });
 }
