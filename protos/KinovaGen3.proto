@@ -80,7 +80,7 @@ PROTO KinovaGen3 [
           metalness 0.150000
         }
         geometry DEF base_link Mesh {
-          url "./kinova_arm_meshes/base_link.obj"
+          url "./kinova_arm_meshes_simple/base_link.STL"
         }
       }
       HingeJoint {
@@ -109,7 +109,7 @@ PROTO KinovaGen3 [
                 metalness 0.150000
               }
               geometry DEF Shoulder_Link Mesh {
-                url "./kinova_arm_meshes/shoulder_link.obj"
+                url "./kinova_arm_meshes_simple/shoulder_link.STL"
               }
             }
             HingeJoint {
@@ -140,7 +140,7 @@ PROTO KinovaGen3 [
                       metalness 0.150000
                     }
                     geometry DEF HalfArm1_Link Mesh {
-                      url "./kinova_arm_meshes/half_arm_1_link.obj"
+                      url "./kinova_arm_meshes_simple/half_arm_1_link.STL"
                     }
                   }
                   HingeJoint {
@@ -169,7 +169,7 @@ PROTO KinovaGen3 [
                             metalness 0.150000
                           }
                           geometry DEF HalfArm2_Link Mesh {
-                            url "./kinova_arm_meshes/half_arm_2_link.obj"
+                            url "./kinova_arm_meshes_simple/half_arm_2_link.STL"
                           }
                         }
                         HingeJoint {
@@ -200,7 +200,7 @@ PROTO KinovaGen3 [
                                   metalness 0.150000
                                 }
                                 geometry DEF ForeArm_Link Mesh {
-                                  url "./kinova_arm_meshes/forearm_link.obj"
+                                  url "./kinova_arm_meshes_simple/forearm_link.STL"
                                 }
                               }
                               HingeJoint {
@@ -229,7 +229,7 @@ PROTO KinovaGen3 [
                                         metalness 0.150000
                                       }
                                       geometry DEF SphericalWrist1_Link Mesh {
-                                        url "./kinova_arm_meshes/spherical_wrist_1_link.obj"
+                                        url "./kinova_arm_meshes_simple/spherical_wrist_1_link.STL"
                                       }
                                     }
                                     HingeJoint {
@@ -260,7 +260,7 @@ PROTO KinovaGen3 [
                                               metalness 0.150000
                                             }
                                             geometry DEF SphericalWrist2_Link Mesh {
-                                              url "./kinova_arm_meshes/spherical_wrist_2_link.obj"
+                                              url "./kinova_arm_meshes_simple/spherical_wrist_2_link.STL"
                                             }
                                           }
                                           HingeJoint {
@@ -410,7 +410,7 @@ PROTO KinovaGen3 [
                                                     metalness 0.150000
                                                   }
                                                   geometry DEF Bracelet_Link Mesh {
-                                                    url "./kinova_arm_meshes/bracelet_with_vision_link.obj"
+                                                    url "./kinova_arm_meshes_simple/bracelet_with_vision_link.STL"
                                                   }
                                                 }
                                               ]

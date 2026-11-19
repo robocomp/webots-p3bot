@@ -1,7 +1,7 @@
 #VRML_SIM R2025a utf8
 # template language: javascript
 
-# ROBOLAB P3Bot V2, from P3BotV2_28-10/P3BotV2_urdf_15-09.urdf. Arms are KinovaGen3.proto.
+# ROBOLAB P3Bot V2, from P3BotV2_28-10/P3BotV2_urdf_15-09.urdf. Meshes: simplified set (P3BotV2_simple/meshes, same as robots/P3Bot/urdf/meshes_v2). Arms are KinovaGen3.proto.
 # Robot frame = URDF base_link lifted 0.04121 m to the floor (+Y forward, +X right).
 # arms/sensors/wheels live in a +90 deg device frame (+X forward) that p3bot-bridge and the graph
 # expect; URDF (x, y, z) -> device (y, -x, z + 0.04121).
@@ -15,22 +15,27 @@ PROTO P3Bot [
   field SFRotation        rotation        0 0 1 0         # Is `Pose.rotation`.
   field SFString          name            "P3Bot"         # Is `Solid.name`.
   field SFString          controller      "<extern>"      # Is `Robot.controller`.
-  field SFFloat           bodyMass         31.6038
-  field SFVec3f           bodyCenterOfMass -0.00015 -0.00242 0.47815
+  field SFFloat           bodyMass            31.6038                # URDF chassis: base_link + shocks + sensors.
+  field SFVec3f           bodyCenterOfMass    -0.00015 -0.00242 0.47815
+  # Low battery ballast (solid box) that brings the whole robot to 60 kg: chassis 31.6038 +
+  # wheels 4 x 2.2729 + arms 2 x 8.3885 (KinovaGen3.proto, fingers included) = 57.4724 kg.
+  field SFFloat           ballastMass         2.5276
+  field SFVec3f           ballastCenterOfMass 0 0 0.10
+  field SFVec3f           ballastSize         0.25 0.20 0.06
   field MFNode            arms
   [
-    # URDF arm mounts. Both arms start at [0, -0.34, pi-0.1, -2.54, 0, -0.87, pi/2].
+    # URDF arm mounts. Initial poses in degrees: right [-25,-20,-150,-145,15,-50,90], left [25,-20,150,-145,-15,-50,90].
     DEF KINOVA_ARM_R KinovaGen3 {
       name "kinova_arm_r"
       translation 0.03 -0.105 0.551210
       rotation 0 0 -1 0.000796327
-      joint1Position 0
-      joint2Position -0.34
-      joint3Position 3.0415926535897933
-      joint4Position -2.54
-      joint5Position 0
-      joint6Position -0.87
-      joint7Position 1.5707963267948966
+      joint1Position -0.436332
+      joint2Position -0.349066
+      joint3Position -2.617994
+      joint4Position -2.530727
+      joint5Position 0.261799
+      joint6Position -0.872665
+      joint7Position 1.570796
     }
     DEF KINOVA_ARM_L KinovaGen3 {
       name "kinova_arm_l"
@@ -38,13 +43,13 @@ PROTO P3Bot [
       rotation 0 0 -1 0.000796327
       prefix "Left_"
       mirrorInitialPoseFromPrefix FALSE
-      joint1Position 0
-      joint2Position -0.34
-      joint3Position 3.0415926535897933
-      joint4Position -2.54
-      joint5Position 0
-      joint6Position -0.87
-      joint7Position 1.5707963267948966
+      joint1Position 0.436332
+      joint2Position -0.349066
+      joint3Position 2.617994
+      joint4Position -2.530727
+      joint5Position -0.261799
+      joint6Position -0.872665
+      joint7Position 1.570796
     }
   ] # Is `Robot.children.GROUP_ARMS.children`.
   field MFNode            sensors
@@ -111,6 +116,22 @@ PROTO P3Bot [
       noise 0.005
       defaultFrequency 20
     }
+    # Same lidar at 1800 columns for the 10 Hz profile (Sensors.LidarProfileHz = 10). Only one is enabled.
+    Lidar {
+      translation -0.11843 0 1.31081
+      rotation 0 0 1 0
+      name "helios_hr"
+      tiltAngle 0
+      horizontalResolution 1800
+      fieldOfView 6.28
+      verticalFieldOfView 1.9198621771937625
+      numberOfLayers 50
+      near 0.06
+      minRange 0.1
+      maxRange 8
+      noise 0.005
+      defaultFrequency 10
+    }
     Accelerometer {
       resolution 0.001
     }
@@ -150,7 +171,7 @@ PROTO P3Bot [
                   roughness 0.6
                   metalness 0
                 }
-                geometry Mesh { url [ "./P3BotV2_28-10/meshes/rueda_simplificada.stl" ] }
+                geometry Mesh { url [ "./P3BotV2_simple/meshes/rueda_simplificada.stl" ] }
               }
             ]
           }
@@ -223,7 +244,7 @@ PROTO P3Bot [
                   roughness 0.6
                   metalness 0
                 }
-                geometry Mesh { url [ "./P3BotV2_28-10/meshes/rueda_simplificada.stl" ] }
+                geometry Mesh { url [ "./P3BotV2_simple/meshes/rueda_simplificada.stl" ] }
               }
             ]
           }
@@ -296,7 +317,7 @@ PROTO P3Bot [
                   roughness 0.6
                   metalness 0
                 }
-                geometry Mesh { url [ "./P3BotV2_28-10/meshes/rueda_simplificada.stl" ] }
+                geometry Mesh { url [ "./P3BotV2_simple/meshes/rueda_simplificada.stl" ] }
               }
             ]
           }
@@ -369,7 +390,7 @@ PROTO P3Bot [
                   roughness 0.6
                   metalness 0
                 }
-                geometry Mesh { url [ "./P3BotV2_28-10/meshes/rueda_simplificada.stl" ] }
+                geometry Mesh { url [ "./P3BotV2_simple/meshes/rueda_simplificada.stl" ] }
               }
             ]
           }
@@ -446,64 +467,64 @@ Robot {
           castShadows FALSE
           geometry Mesh {
             url [
-              "./P3BotV2_28-10/meshes/base_link.STL"
+              "./P3BotV2_simple/meshes/base_link.STL"
             ]
           }
         }
         Pose {
           translation -0.178699 0.125999 0.092741
           rotation 0 0 1 1.57078
-          children [ Shape { appearance DEF SHOCK_GREY PBRAppearance { baseColor 0.45 0.45 0.47 roughness 0.5 metalness 0 } geometry Mesh { url [ "./P3BotV2_28-10/meshes/amortiguador/base_link.STL" ] } } ]
+          children [ Shape { appearance DEF SHOCK_GREY PBRAppearance { baseColor 0.45 0.45 0.47 roughness 0.5 metalness 0 } geometry Mesh { url [ "./P3BotV2_simple/meshes/amortiguador/base_link.STL" ] } } ]
         }
         Pose {
           translation -0.20477 0.125999 0.02679
           rotation 0.577347 -0.577353 -0.577351 2.0944
-          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_28-10/meshes/amortiguador/mount_link.STL" ] } } ]
+          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_simple/meshes/amortiguador/mount_link.STL" ] } } ]
         }
         Pose {
           translation 0.178699 0.126 0.0927409
           rotation 0 0 -1 1.57081
-          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_28-10/meshes/amortiguador/base_link.STL" ] } } ]
+          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_simple/meshes/amortiguador/base_link.STL" ] } } ]
         }
         Pose {
           translation 0.20477 0.126 0.0267899
           rotation 0.577352 0.57735 0.577348 2.0944
-          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_28-10/meshes/amortiguador/mount_link.STL" ] } } ]
+          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_simple/meshes/amortiguador/mount_link.STL" ] } } ]
         }
         Pose {
           translation -0.178699 -0.126001 0.092741
           rotation 0 0 1 1.57078
-          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_28-10/meshes/amortiguador/base_link.STL" ] } } ]
+          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_simple/meshes/amortiguador/base_link.STL" ] } } ]
         }
         Pose {
           translation -0.20477 -0.126001 0.02679
           rotation 0.577347 -0.577353 -0.577351 2.0944
-          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_28-10/meshes/amortiguador/mount_link.STL" ] } } ]
+          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_simple/meshes/amortiguador/mount_link.STL" ] } } ]
         }
         Pose {
           translation 0.178699 -0.126 0.0927409
           rotation 0 0 -1 1.57081
-          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_28-10/meshes/amortiguador/base_link.STL" ] } } ]
+          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_simple/meshes/amortiguador/base_link.STL" ] } } ]
         }
         Pose {
           translation 0.20477 -0.126 0.0267899
           rotation 0.577352 0.57735 0.577348 2.0944
-          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_28-10/meshes/amortiguador/mount_link.STL" ] } } ]
+          children [ Shape { appearance USE SHOCK_GREY geometry Mesh { url [ "./P3BotV2_simple/meshes/amortiguador/mount_link.STL" ] } } ]
         }
         Pose {
           translation -0.01356 -0.11499 1.1832
           rotation 1.25732e-05 -0.130526 -0.991445 3.1414
-          children [ Shape { appearance DEF SENSOR_DARK PBRAppearance { baseColor 0.1 0.1 0.1 roughness 0.5 metalness 0 } geometry Mesh { url [ "./P3BotV2_28-10/meshes/zed_Link.STL" ] } } ]
+          children [ Shape { appearance DEF SENSOR_DARK PBRAppearance { baseColor 0.1 0.1 0.1 roughness 0.5 metalness 0 } geometry Mesh { url [ "./P3BotV2_simple/meshes/zed_Link.STL" ] } } ]
         }
         Pose {
           translation 0 -0.11843 1.21
           rotation 0 0 1 0
-          children [ Shape { appearance USE SENSOR_DARK castShadows FALSE geometry Mesh { url [ "./P3BotV2_28-10/meshes/helios_Link.STL" ] } } ]
+          children [ Shape { appearance USE SENSOR_DARK castShadows FALSE geometry Mesh { url [ "./P3BotV2_simple/meshes/helios_Link.STL" ] } } ]
         }
         Pose {
           translation 0 -0.11843 1.45836
           rotation 0 0 1 0
-          children [ Shape { appearance USE SENSOR_DARK geometry Mesh { url [ "./P3BotV2_28-10/meshes/ricoh_Link.STL" ] } } ]
+          children [ Shape { appearance USE SENSOR_DARK geometry Mesh { url [ "./P3BotV2_simple/meshes/ricoh_Link.STL" ] } } ]
         }
       ]
     }
@@ -538,12 +559,29 @@ Robot {
       }
     ]
   }
+  %<
+    // Chassis (URDF links fixed to base_link, inertia about bodyCenterOfMass) + ballast box,
+    // merged with the parallel-axis theorem about their common centre of mass.
+    const m1 = fields.bodyMass.value, c1 = fields.bodyCenterOfMass.value;
+    const I1 = [[1.746307, -0.000442, 0.000214], [-0.000442, 1.714207, 0.139160], [0.000214, 0.139160, 0.571056]];
+    const m2 = fields.ballastMass.value, c2 = fields.ballastCenterOfMass.value, s = fields.ballastSize.value;
+    const I2 = [[m2 / 12 * (s.y * s.y + s.z * s.z), 0, 0], [0, m2 / 12 * (s.x * s.x + s.z * s.z), 0], [0, 0, m2 / 12 * (s.x * s.x + s.y * s.y)]];
+    const M = m1 + m2;
+    const c = [(m1 * c1.x + m2 * c2.x) / M, (m1 * c1.y + m2 * c2.y) / M, (m1 * c1.z + m2 * c2.z) / M];
+    const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (const [m, p, Ii] of [[m1, c1, I1], [m2, c2, I2]]) {
+      const d = [p.x - c[0], p.y - c[1], p.z - c[2]];
+      const dd = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+      for (let i = 0; i < 3; ++i)
+        for (let j = 0; j < 3; ++j)
+          I[i][j] += Ii[i][j] + m * ((i === j ? dd : 0) - d[i] * d[j]);
+    }
+  >%
   physics Physics {
     density -1
-    # URDF masses: base_link + shock brackets + sensor housings. Add ballast via bodyMass.
-    mass IS bodyMass
-    centerOfMass [ %<= fields.bodyCenterOfMass.value.x >% %<= fields.bodyCenterOfMass.value.y >% %<= fields.bodyCenterOfMass.value.z >% ]
-    inertiaMatrix [ 1.746307 1.714207 0.571056, -0.000442 0.000214 0.139160 ]
+    mass %<= M >%
+    centerOfMass [ %<= c[0] >% %<= c[1] >% %<= c[2] >% ]
+    inertiaMatrix [ %<= I[0][0] >% %<= I[1][1] >% %<= I[2][2] >%, %<= I[0][1] >% %<= I[0][2] >% %<= I[1][2] >% ]
   }
   controller IS controller
   supervisor TRUE
