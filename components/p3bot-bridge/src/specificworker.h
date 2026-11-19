@@ -446,10 +446,18 @@ private:
     // ── Timers ──
     // Sampling period (ms) of the heavy sensors (lidar, 360, zed), independent of Period.Compute.
     int    sensor_period = 0;
+    // Per-sensor sampling periods (ms), each a multiple of Period.Compute. Derived from [Sensors] Hz.
+    int    zed_period = 0;
+    int    cam360_period = 0;
+    int    lidar_period = 0;
+    int    lidar_profile_hz_ = 20;   // 20 -> "helios" (900 cols), 10 -> "helios_hr" (1800 cols)
     // The STEP period, kept because the IMU samples every step while `sensor_period` is the (possibly
     // slower) heavy-sensor rate. Used to turn a gyro noise DENSITY into a per-sample perturbation.
     int    imu_step_period_ms_ = 0;
-    double next_sensor_sample_ms = 0.0;   // next simulation time a sample is due
+    double next_sensor_sample_ms = 0.0;   // next simulation time a sample is due (legacy, unused)
+    double next_zed_sample_ms = 0.0;
+    double next_cam360_sample_ms = 0.0;
+    double next_lidar_sample_ms = 0.0;
 
     struct PARAMS
     {

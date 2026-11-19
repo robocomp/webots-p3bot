@@ -120,6 +120,30 @@ void SpecificWorker::initialize()
     std::cout << "Compute period: " << compute_period << " ms, sensor period: "
               << sensor_period << " ms" << std::endl;
 
+    // Per-sensor rates. Webots samples at multiples of the step, so Hz is rounded to the nearest one
+    // (step 8 ms: 30 Hz -> 32 ms = 31.25 Hz, 20 Hz -> 48 ms = 20.8 Hz, 10 Hz -> 96 ms = 10.4 Hz).
+    const auto hz_to_period = [compute_period](double hz)
+    {
+        const int steps = std::max(1, static_cast<int>(std::lround(1000.0 / hz / compute_period)));
+        return steps * compute_period;
+    };
+    double zed_hz = 30.0, cam360_hz = 30.0;
+    int lidar_profile_hz = 20;
+    try { zed_hz = configLoader.get<double>("Sensors.ZedHz"); } catch(...) {}
+    try { cam360_hz = configLoader.get<double>("Sensors.Camera360Hz"); } catch(...) {}
+    try { lidar_profile_hz = configLoader.get<int>("Sensors.LidarProfileHz"); } catch(...) {}
+    if(lidar_profile_hz != 20 and lidar_profile_hz != 10)
+    {
+        std::cout << "Sensors.LidarProfileHz must be 20 (900 columns) or 10 (1800 columns); using 20." << std::endl;
+        lidar_profile_hz = 20;
+    }
+    zed_period    = hz_to_period(zed_hz);
+    cam360_period = hz_to_period(cam360_hz);
+    lidar_period  = hz_to_period(lidar_profile_hz);
+    std::cout << "Sensor periods: zed " << zed_period << " ms, camera360 " << cam360_period
+              << " ms, lidar " << lidar_period << " ms (profile " << lidar_profile_hz << " Hz)" << std::endl;
+    lidar_profile_hz_ = lidar_profile_hz;
+
     // ── Supervisor and robot node ────────────────────────────────────────────────────────────────
     robot = new webots::Supervisor();
     // getSelf(), not getFromDef("..."): play_room_human.wbt instantiates two P3Bots (DEF shadow_0 and
@@ -238,7 +262,9 @@ void SpecificWorker::initialize()
     camera360_2    = robot->getCamera("camera_360_2");
     zed            = robot->getCamera("zed");
     zedRangeFinder = robot->getRangeFinder("zed-ranger");
-    heliosLidar    = robot->getLidar("helios");
+    // Two lidar devices share the same pose: "helios" (900 columns, 20 Hz profile) and "helios_hr"
+    // (1800 columns, 10 Hz profile). Only the selected one is enabled, so the other costs nothing.
+    heliosLidar    = robot->getLidar(lidar_profile_hz_ == 10 ? "helios_hr" : "helios");
     accelerometer  = robot->getAccelerometer("accelerometer");
     gyroscope      = robot->getGyro("gyro");
 
@@ -246,12 +272,12 @@ void SpecificWorker::initialize()
     // the step rate — that rate GAP is the whole reason for having two periods.
     if(camera360_1 and camera360_2)
     {
-        camera360_1->enable(sensor_period);
-        camera360_2->enable(sensor_period);
+        camera360_1->enable(cam360_period);
+        camera360_2->enable(cam360_period);
     }
-    if(zed)            zed->enable(sensor_period);
-    if(zedRangeFinder) zedRangeFinder->enable(sensor_period);
-    if(heliosLidar)    heliosLidar->enable(sensor_period);
+    if(zed)            zed->enable(zed_period);
+    if(zedRangeFinder) zedRangeFinder->enable(zed_period);
+    if(heliosLidar)    heliosLidar->enable(lidar_period);
     if(accelerometer)  accelerometer->enable(compute_period);
     if(gyroscope)      gyroscope->enable(compute_period);
     else std::cout << "No 'gyro' device on this robot — IMU_getAngularVel() will report cov = -1 "
@@ -296,19 +322,22 @@ void SpecificWorker::compute()
     // faster than sensor_period the extra passes would reprocess the same point clouds and images.
     // Skip them.
     const double sim_now_ms = robot != nullptr ? robot->getTime() * 1000.0 : 0.0;
-    const bool new_sensor_sample = sim_now_ms >= next_sensor_sample_ms;
-    if(new_sensor_sample)
-        next_sensor_sample_ms = sim_now_ms + sensor_period;
+    const auto due = [sim_now_ms](double& next, int period)
+    {
+        if(sim_now_ms < next) return false;
+        next = sim_now_ms + period;
+        return true;
+    };
+    const bool new_lidar  = due(next_lidar_sample_ms, lidar_period);
+    const bool new_cam360 = due(next_cam360_sample_ms, cam360_period);
+    const bool new_zed    = due(next_zed_sample_ms, zed_period);
 
     // The robot pose/speed feeds the control loop, so it is refreshed every step regardless of the
     // sensor rate.
     if(robotNode) receiving_robotSpeed(robot, now);
-    if(new_sensor_sample)
-    {
-        if(heliosLidar)                receiving_lidarData("helios", heliosLidar, double_buffer_helios, helios_delay_queue, now);
-        if(camera360_1 and camera360_2) receiving_camera360Data(camera360_1, camera360_2, now);
-        if(zed and zedRangeFinder)      receiving_cameraRGBD(zed, zedRangeFinder, now);
-    }
+    if(new_lidar  and heliosLidar)                  receiving_lidarData("helios", heliosLidar, double_buffer_helios, helios_delay_queue, now);
+    if(new_cam360 and camera360_1 and camera360_2)  receiving_camera360Data(camera360_1, camera360_2, now);
+    if(new_zed    and zed and zedRangeFinder)       receiving_cameraRGBD(zed, zedRangeFinder, now);
 
     // Refresh the snapshots served by the RPC servants, then drain any work they queued. Everything
     // that talks to Webots happens on this thread.
@@ -659,14 +688,14 @@ void SpecificWorker::receiving_camera360Data(webots::Camera* _camera1, webots::C
     // Acquisition instant, not loop time: both cameras were rendered at the last multiple of their
     // sampling period, so the frame can be up to a full sensor_period old.
     const double cam360_sim_now_ms = robot != nullptr ? robot->getTime() * 1000.0 : 0.0;
-    newImage360.timestamp = acquisition_wall_ms(timestamp, cam360_sim_now_ms, sensor_period);
+    newImage360.timestamp = acquisition_wall_ms(timestamp, cam360_sim_now_ms, cam360_period);
 
     newImage360.width  = 2 * _camera1->getWidth();
     newImage360.height = _camera1->getHeight();
     newImage360.depth  = 3;
     // The DEVICE's sampling period, which is what tells a consumer how old this frame may be. It used
     // to report fps.get_period() — the loop period, unrelated to when the cameras were rendered.
-    newImage360.period = static_cast<float>(sensor_period);
+    newImage360.period = static_cast<float>(cam360_period);
 
     const unsigned char* webotsImageData1 = _camera1->getImage();
     const unsigned char* webotsImageData2 = _camera2->getImage();
@@ -761,10 +790,10 @@ void SpecificWorker::receiving_lidarData(const std::string &name, webots::Lidar*
 
     // Stamp with the lidar's acquisition instant and its own sampling period.
     const double lidar_sim_now_ms = robot != nullptr ? robot->getTime() * 1000.0 : 0.0;
-    newLidar3dData.timestamp    = acquisition_wall_ms(timestamp, lidar_sim_now_ms, sensor_period);
-    newLidar3dData.simTimestamp = static_cast<long>(acquisition_sim_ms(lidar_sim_now_ms, sensor_period));
+    newLidar3dData.timestamp    = acquisition_wall_ms(timestamp, lidar_sim_now_ms, lidar_period);
+    newLidar3dData.simTimestamp = static_cast<long>(acquisition_sim_ms(lidar_sim_now_ms, lidar_period));
     newLidar3dData.simulated    = true;
-    newLidar3dData.period       = static_cast<float>(sensor_period);
+    newLidar3dData.period       = static_cast<float>(lidar_period);
 
     newLidar3dData.points.reserve(static_cast<size_t>(horizontalResolution) * verticalResolution);
 
@@ -868,10 +897,10 @@ void SpecificWorker::receiving_cameraRGBD(webots::Camera* _camera, webots::Range
 
     // Acquisition instant and device sampling period (CameraRGBDSimple has no simTimestamp).
     const double zed_sim_now_ms = robot != nullptr ? robot->getTime() * 1000.0 : 0.0;
-    const long   zed_acq_ms = acquisition_wall_ms(timestamp, zed_sim_now_ms, sensor_period);
+    const long   zed_acq_ms = acquisition_wall_ms(timestamp, zed_sim_now_ms, zed_period);
     new_zed_image.image.alivetime = new_zed_image.depth.alivetime = new_zed_image.points.alivetime = zed_acq_ms;
     new_zed_image.image.period = new_zed_image.depth.period = new_zed_image.points.period =
-        static_cast<float>(sensor_period);
+        static_cast<float>(zed_period);
 
     const int width  = _camera->getWidth();
     const int height = _camera->getHeight();
@@ -913,7 +942,7 @@ void SpecificWorker::receiving_cameraRGBD(webots::Camera* _camera, webots::Range
     {
         RoboCompCameraRGBDSimple::TPoints& points = new_zed_image.points;
         points.alivetime  = zed_acq_ms;
-        points.period     = static_cast<float>(sensor_period);
+        points.period     = static_cast<float>(zed_period);
         points.compressed = false;
         constexpr int offset = 2;
         points.points.reserve(static_cast<size_t>(width / offset) * (height / offset));
@@ -1804,7 +1833,7 @@ void SpecificWorker::Webots2Robocomp_resetWebots()
         wheel_odo_ = WheelOdometry{};
         clock_pairs_.clear();
         sim_wall_rate_ = 1.0;
-        next_sensor_sample_ms = 0.0;
+        next_zed_sample_ms = next_cam360_sample_ms = next_lidar_sample_ms = 0.0;
         next_fullpose_publish_ms = 0.0;
         robot->simulationReset();
     });

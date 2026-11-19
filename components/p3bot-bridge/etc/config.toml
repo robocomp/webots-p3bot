@@ -41,8 +41,18 @@ IMU = "tcp -p 10007"
 # cheap devices that feed the control loop (encoders, accelerometer, gyro, arm sensors).
 Compute = 8
 Emergency = 500
-# Heavy sensors (helios lidar, 360 camera, zed). Clamped up to Compute if set lower.
+# Legacy single heavy-sensor period; superseded by the per-sensor rates in [Sensors] below.
 Sensors = 32
+
+
+[Sensors]
+# Per-sensor rates in Hz. Webots samples at multiples of Period.Compute (8 ms), so each is rounded to
+# the nearest one: 30 Hz -> 32 ms (31.25 Hz), 20 Hz -> 48 ms (20.8 Hz), 10 Hz -> 96 ms (10.4 Hz).
+# Only the arms and the IMU run at the step rate (Period.Compute).
+ZedHz = 30
+Camera360Hz = 30
+# Lidar profile: 20 = "helios" device, 900 columns @ 20 Hz; 10 = "helios_hr" device, 1800 columns @ 10 Hz.
+LidarProfileHz = 20
 
 
 [FullPose]
